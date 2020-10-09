@@ -43,39 +43,39 @@ class Race(MonteCarlo, RaceAnalysis):
     # SLOTS ------------------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
 
-    __slots__ = ("__cur_lap",               # contains current lap (used as discretization variable)
+    __slots__ = ("__cur_lap",  # contains current lap (used as discretization variable)
                  # objects ---------------------------------------------------------------------------------------------
-                 "__drivers_list",          # [driver1, driver2, ...] -> list with driver objects
-                 "__no_drivers",            # number of drivers attending the race
-                 "__track",                 # track object
+                 "__drivers_list",  # [driver1, driver2, ...] -> list with driver objects
+                 "__no_drivers",  # number of drivers attending the race
+                 "__track",  # track object
                  # general parameters/options --------------------------------------------------------------------------
-                 "__use_prob_infl",         # boolean to set if probabilistic influences should be activated
-                 "__race_pars",             # contains race parameters such as t_overtake, drs_window, ...
-                 "__monte_carlo_pars",      # parameters used for monte carlo method
-                 "__pit_driver_idxs",       # create list for pitting drivers (set by checking their inlaps)
-                 "__pit_outlap_losses",     # create array to save time losses due to pit stop (outlap) for DRS checks
+                 "__use_prob_infl",  # boolean to set if probabilistic influences should be activated
+                 "__race_pars",  # contains race parameters such as t_overtake, drs_window, ...
+                 "__monte_carlo_pars",  # parameters used for monte carlo method
+                 "__pit_driver_idxs",  # create list for pitting drivers (set by checking their inlaps)
+                 "__pit_outlap_losses",  # create array to save time losses due to pit stop (outlap) for DRS checks
                  # race state ------------------------------------------------------------------------------------------
-                 "__laptimes",              # array with laptimes
-                 "__racetimes",             # array with racetimes
-                 "__positions",             # array with positions
-                 "__bool_driving",          # bool array containining which drivers are driving (did not retire)
-                 "__progress",              # array with race progress in laps for every driver
+                 "__laptimes",  # array with laptimes
+                 "__racetimes",  # array with racetimes
+                 "__positions",  # array with positions
+                 "__bool_driving",  # bool array containining which drivers are driving (did not retire)
+                 "__progress",  # array with race progress in laps for every driver
                  # fcy related -----------------------------------------------------------------------------------------
-                 "__fcy_data",              # dict with FCY data -> {"phases": [[start, end, type, SC delay (SC only),
-                                            #                                    SC duration (SC only),
-                                            #                                    real end (SC only, added during sim.)],
-                                            #                                   [], ...],
-                                            #                        "domain": 'time' or 'progress' (for start and end)}
-                 "__retire_data",           # dict with retirement data -> {"retirements": [start driver 1, ...],
-                                            #                               "domain": 'time' or 'progress' (for start)}
-                 "__fcy_handling",          # dict containing everything required to handle the FCY phases correctly
-                 "__overtake_allowed",      # bool array containing which drivers are allowed to overtake / be overtaken
-                 "__presim_info",           # saves information from the pre-simulation (e.g. race duration)
+                 "__fcy_data",  # dict with FCY data -> {"phases": [[start, end, type, SC delay (SC only),
+                 #                                    SC duration (SC only),
+                 #                                    real end (SC only, added during sim.)],
+                 #                                   [], ...],
+                 #                        "domain": 'time' or 'progress' (for start and end)}
+                 "__retire_data",  # dict with retirement data -> {"retirements": [start driver 1, ...],
+                 #                               "domain": 'time' or 'progress' (for start)}
+                 "__fcy_handling",  # dict containing everything required to handle the FCY phases correctly
+                 "__overtake_allowed",  # bool array containing which drivers are allowed to overtake / be overtaken
+                 "__presim_info",  # saves information from the pre-simulation (e.g. race duration)
                  # virtual strategy engineer ---------------------------------------------------------------------------
-                 "__vse",                   # ML model handling pit stop decisions
+                 "__vse",  # ML model handling pit stop decisions
                  # result arrays ---------------------------------------------------------------------------------------
-                 "__flagstates",            # list with flag states of the race (with regard to the leader's lap)
-                 "__result_status")         # integer indicating if the result is valid or not (and why)
+                 "__flagstates",  # list with flag states of the race (with regard to the leader's lap)
+                 "__result_status")  # integer indicating if the result is valid or not (and why)
 
     # ------------------------------------------------------------------------------------------------------------------
     # CONSTRUCTOR ------------------------------------------------------------------------------------------------------
@@ -100,7 +100,7 @@ class Race(MonteCarlo, RaceAnalysis):
         # --------------------------------------------------------------------------------------------------------------
 
         # Flags for disabling features
-        self._disable_retirements = disable_retirements
+        self._enable_retirements = not disable_retirements
 
         # create driver list
         self.drivers_list = []
@@ -215,10 +215,12 @@ class Race(MonteCarlo, RaceAnalysis):
 
         # check for possible intersections between manually inserted FCY phases
         if self.fcy_data["phases"] and self.check_fcyphase_intersection(fcy_data=self.fcy_data):
-            raise ValueError("Manually inserted FCY phases either intersect or lie too close together (the race"
-                             " simulation can only handle one active phase per lap, therefore a minimum distance of"
-                             " %.1f laps (SC) and %.1f laps (VSC) is enforced between two phases)!"
-                             % (self.monte_carlo_pars["min_dist_sc"], self.monte_carlo_pars["min_dist_vsc"]))
+            self.fix_fcyphase_intersection(self.fcy_data)
+            if self.check_fcyphase_intersection(fcy_data=self.fcy_data):
+                raise ValueError("Manually inserted FCY phases either intersect or lie too close together (the race"
+                                 " simulation can only handle one active phase per lap, therefore a minimum distance of"
+                                 " %.1f laps (SC) and %.1f laps (VSC) is enforced between two phases)!"
+                                 % (self.monte_carlo_pars["min_dist_sc"], self.monte_carlo_pars["min_dist_vsc"]))
 
         # create random events such as accidents or car failures if create_rand_events is True and empty lists were
         # given in the parameter file (such events must be determined in front of the actual race simulation)
@@ -269,128 +271,254 @@ class Race(MonteCarlo, RaceAnalysis):
             if self.vse is not None:
                 self.presim_info["base_strategy_vse"] = presim_info_tmp[1]
 
+    def set_controlled_drivers(self, driver_list: list) -> None:
+        """The method deletes strategic information for the drivers that should be controlled by an external agent,
+        in order to enable real-time strategy specification"""
+        if len(driver_list) == 0:
+            print("[WARNING] No drivers were specified while attempting to set externally controlled drivers")
+        for car_number in driver_list:
+            for driver in self.drivers_list:
+                if driver.carno == car_number:
+                    driver.strategy_info = []
+
+    def fix_fcyphase_intersection(self, fcy_data):
+        for idx_1, cur_phase_1 in enumerate(fcy_data["phases"]):
+            # set minimum distance based on domain and FCY phase type
+            if fcy_data["domain"] == 'progress':
+                if cur_phase_1[2] == 'VSC':
+                    cur_min_dist = self.monte_carlo_pars["min_dist_vsc"]
+                elif cur_phase_1[2] == 'SC':
+                    cur_min_dist = self.monte_carlo_pars["min_dist_sc"]
+                else:
+                    raise ValueError("Unknown FCY phase type!")
+            elif fcy_data["domain"] == 'time':
+                if cur_phase_1[2] == 'VSC':
+                    cur_min_dist = self.monte_carlo_pars["min_dist_vsc"] * (self.track.t_q + self.track.t_gap_racepace)
+                elif cur_phase_1[2] == 'SC':
+                    cur_min_dist = self.monte_carlo_pars["min_dist_sc"] * (self.track.t_q + self.track.t_gap_racepace)
+                else:
+                    raise ValueError("Unknown FCY phase type!")
+            else:
+                raise ValueError("Unknown domain type!")
+
+            # check for intersections with phases coming after the current one in the list
+            for cur_phase_2 in fcy_data["phases"][idx_1 + 1:]:
+                if cur_phase_2[0] <= cur_phase_1[1] + cur_min_dist \
+                        and cur_phase_1[0] - cur_min_dist <= cur_phase_2[1]:
+                    # if intersection was found, shorten the second fcy phase
+                    cur_phase_2[0] = cur_phase_1[1] + cur_min_dist + 0.01
+                    # cur_phase_2[1] = cur_phase_1[0] - cur_min_dist - 0.01
+
     # ------------------------------------------------------------------------------------------------------------------
     # GETTERS / SETTERS ------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
 
-    def __get_cur_lap(self) -> int: return self.__cur_lap
+    def __get_cur_lap(self) -> int:
+        return self.__cur_lap
 
     def __set_cur_lap(self, x: int) -> None:
         if not 0 <= x < 200:
             raise ValueError("Unreasonable value!", x)
         self.__cur_lap = x
+
     cur_lap = property(__get_cur_lap, __set_cur_lap)
 
-    def __get_drivers_list(self) -> List[Driver]: return self.__drivers_list
-    def __set_drivers_list(self, x: List[Driver]) -> None: self.__drivers_list = x
+    def __get_drivers_list(self) -> List[Driver]:
+        return self.__drivers_list
+
+    def __set_drivers_list(self, x: List[Driver]) -> None:
+        self.__drivers_list = x
+
     drivers_list = property(__get_drivers_list, __set_drivers_list)
 
-    def __get_no_drivers(self) -> int: return self.__no_drivers
+    def __get_no_drivers(self) -> int:
+        return self.__no_drivers
 
     def __set_no_drivers(self, x: int) -> None:
         if not 0 < x < 30:
             raise ValueError("Unreasonable value!", x)
         self.__no_drivers = x
+
     no_drivers = property(__get_no_drivers, __set_no_drivers)
 
-    def __get_track(self) -> Track: return self.__track
-    def __set_track(self, x: Track) -> None: self.__track = x
+    def __get_track(self) -> Track:
+        return self.__track
+
+    def __set_track(self, x: Track) -> None:
+        self.__track = x
+
     track = property(__get_track, __set_track)
 
-    def __get_use_prob_infl(self) -> bool: return self.__use_prob_infl
-    def __set_use_prob_infl(self, x: bool) -> None: self.__use_prob_infl = x
+    def __get_use_prob_infl(self) -> bool:
+        return self.__use_prob_infl
+
+    def __set_use_prob_infl(self, x: bool) -> None:
+        self.__use_prob_infl = x
+
     use_prob_infl = property(__get_use_prob_infl, __set_use_prob_infl)
 
-    def __get_race_pars(self) -> dict: return self.__race_pars
-    def __set_race_pars(self, x: dict) -> None: self.__race_pars = x
+    def __get_race_pars(self) -> dict:
+        return self.__race_pars
+
+    def __set_race_pars(self, x: dict) -> None:
+        self.__race_pars = x
+
     race_pars = property(__get_race_pars, __set_race_pars)
 
-    def __get_monte_carlo_pars(self) -> dict: return self.__monte_carlo_pars
-    def __set_monte_carlo_pars(self, x: dict) -> None: self.__monte_carlo_pars = x
+    def __get_monte_carlo_pars(self) -> dict:
+        return self.__monte_carlo_pars
+
+    def __set_monte_carlo_pars(self, x: dict) -> None:
+        self.__monte_carlo_pars = x
+
     monte_carlo_pars = property(__get_monte_carlo_pars, __set_monte_carlo_pars)
 
-    def __get_pit_driver_idxs(self) -> List[int]: return self.__pit_driver_idxs
-    def __set_pit_driver_idxs(self, x: List[int]) -> None: self.__pit_driver_idxs = x
+    def __get_pit_driver_idxs(self) -> List[int]:
+        return self.__pit_driver_idxs
+
+    def __set_pit_driver_idxs(self, x: List[int]) -> None:
+        self.__pit_driver_idxs = x
+
     pit_driver_idxs = property(__get_pit_driver_idxs, __set_pit_driver_idxs)
 
-    def __get_pit_outlap_losses(self) -> np.ndarray: return self.__pit_outlap_losses
-    def __set_pit_outlap_losses(self, x: np.ndarray) -> None: self.__pit_outlap_losses = x
+    def __get_pit_outlap_losses(self) -> np.ndarray:
+        return self.__pit_outlap_losses
+
+    def __set_pit_outlap_losses(self, x: np.ndarray) -> None:
+        self.__pit_outlap_losses = x
+
     pit_outlap_losses = property(__get_pit_outlap_losses, __set_pit_outlap_losses)
 
-    def __get_laptimes(self) -> np.ndarray: return self.__laptimes
-    def __set_laptimes(self, x: np.ndarray) -> None: self.__laptimes = x
+    def __get_laptimes(self) -> np.ndarray:
+        return self.__laptimes
+
+    def __set_laptimes(self, x: np.ndarray) -> None:
+        self.__laptimes = x
+
     laptimes = property(__get_laptimes, __set_laptimes)
 
-    def __get_racetimes(self) -> np.ndarray: return self.__racetimes
-    def __set_racetimes(self, x: np.ndarray) -> None: self.__racetimes = x
+    def __get_racetimes(self) -> np.ndarray:
+        return self.__racetimes
+
+    def __set_racetimes(self, x: np.ndarray) -> None:
+        self.__racetimes = x
+
     racetimes = property(__get_racetimes, __set_racetimes)
 
-    def __get_positions(self) -> np.ndarray: return self.__positions
-    def __set_positions(self, x: np.ndarray) -> None: self.__positions = x
+    def __get_positions(self) -> np.ndarray:
+        return self.__positions
+
+    def __set_positions(self, x: np.ndarray) -> None:
+        self.__positions = x
+
     positions = property(__get_positions, __set_positions)
 
-    def __get_bool_driving(self) -> np.ndarray: return self.__bool_driving
-    def __set_bool_driving(self, x: np.ndarray) -> None: self.__bool_driving = x
+    def __get_bool_driving(self) -> np.ndarray:
+        return self.__bool_driving
+
+    def __set_bool_driving(self, x: np.ndarray) -> None:
+        self.__bool_driving = x
+
     bool_driving = property(__get_bool_driving, __set_bool_driving)
 
-    def __get_progress(self) -> np.ndarray: return self.__progress
-    def __set_progress(self, x: np.ndarray) -> None: self.__progress = x
+    def __get_progress(self) -> np.ndarray:
+        return self.__progress
+
+    def __set_progress(self, x: np.ndarray) -> None:
+        self.__progress = x
+
     progress = property(__get_progress, __set_progress)
 
-    def __get_fcy_data(self) -> dict: return self.__fcy_data
-    def __set_fcy_data(self, x: dict) -> None: self.__fcy_data = x
+    def __get_fcy_data(self) -> dict:
+        return self.__fcy_data
+
+    def __set_fcy_data(self, x: dict) -> None:
+        self.__fcy_data = x
+
     fcy_data = property(__get_fcy_data, __set_fcy_data)
 
-    def __get_retire_data(self) -> dict: return self.__retire_data
-    def __set_retire_data(self, x: dict) -> None: self.__retire_data = x
+    def __get_retire_data(self) -> dict:
+        return self.__retire_data
+
+    def __set_retire_data(self, x: dict) -> None:
+        self.__retire_data = x
+
     retire_data = property(__get_retire_data, __set_retire_data)
 
-    def __get_fcy_handling(self) -> dict: return self.__fcy_handling
-    def __set_fcy_handling(self, x: dict) -> None: self.__fcy_handling = x
+    def __get_fcy_handling(self) -> dict:
+        return self.__fcy_handling
+
+    def __set_fcy_handling(self, x: dict) -> None:
+        self.__fcy_handling = x
+
     fcy_handling = property(__get_fcy_handling, __set_fcy_handling)
 
-    def __get_overtake_allowed(self) -> np.ndarray: return self.__overtake_allowed
-    def __set_overtake_allowed(self, x: np.ndarray) -> None: self.__overtake_allowed = x
+    def __get_overtake_allowed(self) -> np.ndarray:
+        return self.__overtake_allowed
+
+    def __set_overtake_allowed(self, x: np.ndarray) -> None:
+        self.__overtake_allowed = x
+
     overtake_allowed = property(__get_overtake_allowed, __set_overtake_allowed)
 
-    def __get_presim_info(self) -> dict: return self.__presim_info
-    def __set_presim_info(self, x: dict) -> None: self.__presim_info = x
+    def __get_presim_info(self) -> dict:
+        return self.__presim_info
+
+    def __set_presim_info(self, x: dict) -> None:
+        self.__presim_info = x
+
     presim_info = property(__get_presim_info, __set_presim_info)
 
-    def __get_vse(self) -> VSE: return self.__vse
-    def __set_vse(self, x: VSE) -> None: self.__vse = x
+    def __get_vse(self) -> VSE:
+        return self.__vse
+
+    def __set_vse(self, x: VSE) -> None:
+        self.__vse = x
+
     vse = property(__get_vse, __set_vse)
 
-    def __get_flagstates(self) -> List[str]: return self.__flagstates
+    def __get_flagstates(self) -> List[str]:
+        return self.__flagstates
 
     def __set_flagstates(self, x: List[str]) -> None:
         for entry in x:
             if entry not in ["G", "Y", "VSC", "SC", "C"]:
                 raise ValueError("Unknown flagstate %s!" % entry)
         self.__flagstates = x
+
     flagstates = property(__get_flagstates, __set_flagstates)
 
-    def __get_result_status(self) -> int: return self.__result_status
-    def __set_result_status(self, x: int) -> None: self.__result_status = x
+    def __get_result_status(self) -> int:
+        return self.__result_status
+
+    def __set_result_status(self, x: int) -> None:
+        self.__result_status = x
+
     result_status = property(__get_result_status, __set_result_status)
+
+    def get_race_length(self):
+        return self.race_pars["tot_no_laps"]
+
+    def get_cur_lap(self):
+        return self.cur_lap
+
+    def get_simulation_state(self) -> dict:
+        """The method returns all the information that may change during the race, in order to build a state
+        for an external agent"""
+
+        state = {"lap": self.__get_cur_lap(),
+                 "lap_times": self.__get_laptimes(),
+                 "race_time": self.__get_racetimes(),
+                 "still_racing": self.__get_bool_driving(),
+                 "flag_state": self.__get_flagstates(),
+                 "overtake_allowed": self.__get_overtake_allowed(),
+                 "drivers": self.__get_drivers_list()}  # Include drivers to interpret to whom each data refers to
+        return state
 
     # ------------------------------------------------------------------------------------------------------------------
     # METHODS (MAIN METHODS) -------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
-
-    def simulate_race(self) -> None:
-        """
-        This is the main method than can be called from outside to simulate a race.
-        """
-
-        # --------------------------------------------------------------------------------------------------------------
-        # DURING THE RACE ----------------------------------------------------------------------------------------------
-        # --------------------------------------------------------------------------------------------------------------
-
-        # simulate race lap by lap
-        while self.cur_lap < self.race_pars["tot_no_laps"]:
-            self.__simulate_lap()
-
+    def __race_conclusion(self):
         # retirements were converted from progress to race time during the simulation -> assure this is set
         self.retire_data["domain"] = 'time'
 
@@ -408,20 +536,40 @@ class Race(MonteCarlo, RaceAnalysis):
         # check plausibility of result
         self.__check_plausibility()
 
+    def simulate_race(self) -> None:
+        """
+        This is the main method than can be called from outside to simulate a race.
+        """
+
+        # --------------------------------------------------------------------------------------------------------------
+        # DURING THE RACE ----------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------------------------------
+
+        # simulate race lap by lap
+        while self.cur_lap < self.race_pars["tot_no_laps"]:
+            self.__simulate_lap()
+
+        self.__race_conclusion()
+
     def step(self, pit_info: list) -> tuple:
         """
         This method wraps the simulation of a lap to proceed in the race step by step,
         possibly overwriting default strategies from the configuration files
         """
-
+        # TODO do post-race processing
         for carno, info in pit_info:
             idx = self.drivers_mapping[carno]
             compound, age, energy = info[0], info[1], info[2]
-            self.drivers_list[idx].strategy_info = [[self.cur_lap + 1, compound, age, energy]]
+            # Set the pit stop to be performed at the following lap, as __simulate_lap() will immediately increase the
+            # lap counter
+            self.drivers_list[idx].strategy_info.append([self.cur_lap + 1, compound, age, energy])
 
         self.__simulate_lap()
-        return self.laptimes[self.cur_lap, self.bool_driving[self.cur_lap]], \
-               self.drivers_list[self.bool_driving[self.cur_lap]]
+        # TODO problems with drivers not using at least 2 compounds
+        if self.cur_lap == self.race_pars["tot_no_laps"] and False:
+            self.__race_conclusion()
+        still_driving = [driver for i, driver in enumerate(self.drivers_list) if self.bool_driving[self.cur_lap, i]]
+        return self.laptimes[self.cur_lap, self.bool_driving[self.cur_lap]], still_driving
 
     def __simulate_lap(self) -> None:
         """
@@ -898,8 +1046,8 @@ class Race(MonteCarlo, RaceAnalysis):
             for pos_iter in range(1, self.no_drivers):
                 # using bool vectors instead of indices as in __assure_min_dists since positions can change during the
                 # iterations
-                pos_cur_b = self.positions[self.cur_lap] == pos_iter          # bool vector current position
-                pos_back_b = self.positions[self.cur_lap] == pos_iter + 1     # bool vector backman position
+                pos_cur_b = self.positions[self.cur_lap] == pos_iter  # bool vector current position
+                pos_back_b = self.positions[self.cur_lap] == pos_iter + 1  # bool vector backman position
 
                 # continue only if driver behind is still driving
                 if not self.bool_driving[self.cur_lap, pos_back_b]:
@@ -995,7 +1143,7 @@ class Race(MonteCarlo, RaceAnalysis):
         if self.vse is not None:
             # take tirechange decisions (are set None for retired drivers) (important: the decisions are taken based on
             # the data at the end of the previous lap (with some exceptions, e.g. FCY status))
-            next_compound = self.vse.\
+            next_compound = self.vse. \
                 decide_pitstop(driver_initials=[driver.initials for driver in self.drivers_list],
                                cur_compounds=[driver.car.tireset.compound for driver in self.drivers_list],
                                no_past_tirechanges=[len(driver.strategy_info) - 1 for driver in self.drivers_list],
@@ -1343,7 +1491,7 @@ class Race(MonteCarlo, RaceAnalysis):
 
         # check if every driver used at least two different compounds --------------------------------------------------
         for idx_driver, driver in enumerate(self.drivers_list):
-            if self.bool_driving[-1, idx_driver]\
+            if self.bool_driving[-1, idx_driver] \
                     and not len({x[1] for x in driver.strategy_info}) > 1:
                 print("WARNING: %s did not use two different compounds during the race, race will be marked as"
                       " invalid!" % driver.initials)
