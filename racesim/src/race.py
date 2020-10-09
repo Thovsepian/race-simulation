@@ -92,11 +92,15 @@ class Race(MonteCarlo, RaceAnalysis):
                  use_prob_infl: bool,
                  create_rand_events: bool,
                  monte_carlo_pars: dict,
-                 event_pars: dict) -> None:
+                 event_pars: dict,
+                 disable_retirements=False) -> None:
 
         # --------------------------------------------------------------------------------------------------------------
         # CREATE OTHER REQUIRED OBJECTS --------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
+
+        # Flags for disabling features
+        self._disable_retirements = disable_retirements
 
         # create driver list
         self.drivers_list = []
@@ -107,6 +111,7 @@ class Race(MonteCarlo, RaceAnalysis):
                                             tireset_pars=tireset_pars[initials]))
 
         self.drivers_list.sort(key=lambda driver: driver.carno)
+        self.drivers_mapping = {self.drivers_list[idx].carno: idx for idx in range(len(self.drivers_list))}
         self.no_drivers = len(self.drivers_list)
 
         # create track object
@@ -148,7 +153,9 @@ class Race(MonteCarlo, RaceAnalysis):
 
         # create FCY related arrays
         self.fcy_data = copy.deepcopy(event_pars["fcy_data"])  # create copy to avoid changing the original dict
+
         self.retire_data = copy.deepcopy(event_pars["retire_data"])  # create copy to avoid changing the original dict
+
         self.fcy_handling = {"sc_ghost_racetimes": [None] * self.no_drivers,
                              "sc_ghost_laps": [None] * self.no_drivers,
                              "idxs_act_phase": [None] * self.no_drivers,
@@ -401,6 +408,21 @@ class Race(MonteCarlo, RaceAnalysis):
         # check plausibility of result
         self.__check_plausibility()
 
+    def step(self, pit_info: list) -> tuple:
+        """
+        This method wraps the simulation of a lap to proceed in the race step by step,
+        possibly overwriting default strategies from the configuration files
+        """
+
+        for carno, info in pit_info:
+            idx = self.drivers_mapping[carno]
+            compound, age, energy = info[0], info[1], info[2]
+            self.drivers_list[idx].strategy_info = [[self.cur_lap + 1, compound, age, energy]]
+
+        self.__simulate_lap()
+        return self.laptimes[self.cur_lap, self.bool_driving[self.cur_lap]], \
+               self.drivers_list[self.bool_driving[self.cur_lap]]
+
     def __simulate_lap(self) -> None:
         """
         This method is the mainly used method within the race class. It performs all the necessary steps to simulate
@@ -430,7 +452,8 @@ class Race(MonteCarlo, RaceAnalysis):
 
         # check for driver retirements (must be done after calculating the lap times to obtain a valid race time
         # estimation)
-        self.__handle_driver_retirements()
+        if self._enable_retirements:
+            self.__handle_driver_retirements()
 
         # check overtaking and modify positions and laptimes according to overtaking time losses
         self.__handle_overtaking_track()
