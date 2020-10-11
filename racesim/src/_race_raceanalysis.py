@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import math
@@ -489,9 +491,12 @@ class RaceAnalysis(object):
         location = self.track.name
         season = self.race_pars["season"]
 
-        racetimes_file_path = os.path.join(results_path, "%s_%i_racetimes.csv" % (location, season))
-        laptimes_file_path = os.path.join(results_path, "%s_%i_laptimes.csv" % (location, season))
-        positions_file_path = os.path.join(results_path, "%s_%i_positions.csv" % (location, season))
+        today = datetime.now()
+        timestamp = str(int(today.timestamp() * 1000))
+
+        racetimes_file_path = os.path.join(results_path, "%s_%s_%i_racetimes.csv" % (timestamp, location, season))
+        laptimes_file_path = os.path.join(results_path, "%s_%s_%i_laptimes.csv" % (timestamp, location, season))
+        positions_file_path = os.path.join(results_path, "%s_%s_%i_positions.csv" % (timestamp, location, season))
 
         initials = [cur_driver.initials for cur_driver in self.drivers_list]
         header = ",".join(['lap'] + initials)
@@ -521,7 +526,7 @@ class RaceAnalysis(object):
                 else:
                     lap_influences[cur_lap - 1][cur_initials] = 'none'
 
-        lapinfluences_file_path = os.path.join(results_path, "%s_%i_lapinfluences.csv" % (location, season))
+        lapinfluences_file_path = os.path.join(results_path, "%s_%s_%i_lapinfluences.csv" % (timestamp, location, season))
 
         with open(lapinfluences_file_path, 'w') as fh:
             fh.write(header + "\n")
