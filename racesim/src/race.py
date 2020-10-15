@@ -271,15 +271,28 @@ class Race(MonteCarlo, RaceAnalysis):
             if self.vse is not None:
                 self.presim_info["base_strategy_vse"] = presim_info_tmp[1]
 
-    def set_controlled_drivers(self, driver_list: list) -> None:
+    def set_controlled_drivers(self, driver_list: list) -> dict:
         """The method deletes strategic information for the drivers that should be controlled by an external agent,
         in order to enable real-time strategy specification"""
         if len(driver_list) == 0:
             print("[WARNING] No drivers were specified while attempting to set externally controlled drivers")
+        start_strategies = {}
         for car_number in driver_list:
+            car_number = int(car_number)
             for driver in self.drivers_list:
                 if driver.carno == car_number:
-                    driver.strategy_info = []
+                    starting_strategy = driver.strategy_info[0]
+                    for i in range(len(driver.strategy_info)):
+                        if driver.strategy_info[i][0] > self.__cur_lap:
+                            # Remove any strategy beyond the current (start of controlled simulation) lap
+                            driver.strategy_info = driver.strategy_info[:i]
+                            break
+                    # Define the start compound for any of the controlled drivers
+                    start_strategies[driver.carno] = starting_strategy[1]
+
+        return start_strategies
+
+    #def get_controlled_drivers_tyres
 
     def fix_fcyphase_intersection(self, fcy_data):
         for idx_1, cur_phase_1 in enumerate(fcy_data["phases"]):
