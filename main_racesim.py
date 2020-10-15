@@ -39,7 +39,7 @@ with open(requirements_path, 'r') as fh_:
         line = fh_.readline()
 
 # check dependencies
-pkg_resources.require(dependencies)
+# pkg_resources.require(dependencies)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -258,7 +258,7 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
 
     # set race parameter file names
-    race_pars_file_ = 'pars_Spielberg_2019.ini'
+    race_pars_file_ = 'pars_Catalunya_2017.ini'
     mcs_pars_file_ = 'pars_mcs.ini'
 
     # set simulation options
@@ -275,9 +275,9 @@ if __name__ == '__main__':
     # use_print:            set if prints to console should be used or not (does not suppress hints/warnings)
     # use_print_result:     set if result should be printed to console or not
     # use_plot:             set if plotting should be used or not
-    sim_opts_ = {"use_prob_infl": False,
+    sim_opts_ = {"use_prob_infl": True,
                  "create_rand_events": False,
-                 "use_vse": False,
+                 "use_vse": True,
                  "no_sim_runs": 1,
                  "no_workers": 1,
                  "use_print": True,
@@ -287,7 +287,7 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
     # SIMULATION CALL --------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
-
-    main(sim_opts=sim_opts_,
-         race_pars_file=race_pars_file_,
-         mcs_pars_file=mcs_pars_file_)
+    for i in range(20):
+        main(sim_opts=sim_opts_,
+             race_pars_file=race_pars_file_,
+             mcs_pars_file=mcs_pars_file_)
