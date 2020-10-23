@@ -1,3 +1,5 @@
+import copy
+
 from racesim.src.tireset import Tireset
 import scipy.stats
 
@@ -210,6 +212,23 @@ class Car(object):
     def __get_auto_consumption_adjust(self) -> bool: return self.__auto_consumption_adjust
     def __set_auto_consumption_adjust(self, x: bool) -> None: self.__auto_consumption_adjust = x
     auto_consumption_adjust = property(__get_auto_consumption_adjust, __set_auto_consumption_adjust)
+
+    def get_car_state(self) -> tuple:
+        """Get a reduced representation of the object, with all information that may change during race"""
+
+        if self.__drivetype == "combustion":
+            power = self.m_fuel
+        elif self.__drivetype == "electric":
+            power = self.energy
+        return power, self.tireset.get_tireset_state()
+
+    def set_car_state(self, state: tuple) -> None:
+        power = state[0]
+        if self.__drivetype == "combustion":
+            self.m_fuel = power
+        elif self.__drivetype == "electric":
+            self.energy = power
+        self.tireset.set_tireset_state(state[1])
 
     # ------------------------------------------------------------------------------------------------------------------
     # METHODS ----------------------------------------------------------------------------------------------------------

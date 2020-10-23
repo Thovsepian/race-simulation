@@ -1,3 +1,5 @@
+import copy
+
 from racesim.src.combustioncar import CombustionCar
 from racesim.src.electriccar import ElectricCar
 from typing import List
@@ -149,6 +151,21 @@ class Driver(object):
     def __get_lap_influences(self) -> dict: return self.__lap_influences
     def __set_lap_influences(self, x: dict) -> None: self.__lap_influences = x
     lap_influences = property(__get_lap_influences, __set_lap_influences)
+
+    def get_driver_state(self, controlled=False) -> tuple:
+        """Get a reduced representation of the object, with all information that may change during race"""
+        state = (self.lap_influences,
+                 self.car.get_car_state(),
+                 self.carno,
+                 copy.deepcopy(self.strategy_info) if controlled else None)
+        return state
+
+    def set_driver_state(self, state: tuple, controlled=False):
+        assert state[2] == self.carno, "Trying to set driver state for wrong driver"
+        self.lap_influences = copy.deepcopy(state[0])
+        self.car.set_car_state(state[1])
+        if controlled:
+            self.strategy_info = copy.deepcopy(state[3])
 
     # ------------------------------------------------------------------------------------------------------------------
     # METHODS ----------------------------------------------------------------------------------------------------------

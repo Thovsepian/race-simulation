@@ -113,6 +113,7 @@ class Race(MonteCarlo, RaceAnalysis):
         self.drivers_list.sort(key=lambda driver: driver.carno)
         self.drivers_mapping = {self.drivers_list[idx].carno: idx for idx in range(len(self.drivers_list))}
         self.no_drivers = len(self.drivers_list)
+        self.controlled_drivers = set()
 
         # create track object
         self.track = Track(track_pars=track_pars)
@@ -277,6 +278,7 @@ class Race(MonteCarlo, RaceAnalysis):
         if len(driver_list) == 0:
             print("[WARNING] No drivers were specified while attempting to set externally controlled drivers")
         start_strategies = {}
+        self.controlled_drivers = set(driver_list)
         for car_number in driver_list:
             car_number = int(car_number)
             for driver in self.drivers_list:
@@ -515,18 +517,52 @@ class Race(MonteCarlo, RaceAnalysis):
     def get_cur_lap(self):
         return self.cur_lap
 
-    def get_simulation_state(self) -> dict:
+    def get_simulation_state(self) -> tuple:
         """The method returns all the information that may change during the race, in order to build a state
         for an external agent"""
 
-        state = {"lap": self.__get_cur_lap(),
-                 "lap_times": self.__get_laptimes(),
-                 "race_time": self.__get_racetimes(),
-                 "still_racing": self.__get_bool_driving(),
-                 "flag_state": self.__get_flagstates(),
-                 "overtake_allowed": self.__get_overtake_allowed(),
-                 "drivers": self.__get_drivers_list()}  # Include drivers to interpret to whom each data refers to
+        drivers = []
+
+        for driver in self.drivers_list:
+            controlled_driver = driver.carno in self.controlled_drivers
+            drivers.append(driver.get_driver_state(controlled=controlled_driver))
+
+        state = (self.cur_lap,
+                 copy.deepcopy(self.laptimes),
+                 copy.deepcopy(self.racetimes),
+                 copy.deepcopy(self.bool_driving),
+                 copy.deepcopy(self.flagstates),
+                 copy.deepcopy(self.overtake_allowed),
+                 copy.deepcopy(self.positions),
+                 copy.deepcopy(self.progress),
+                 copy.deepcopy(self.pit_driver_idxs),
+                 copy.deepcopy(self.pit_outlap_losses),
+                 tuple(drivers))
+
+        # from pympler import asizeof
+        # # should give you the full object size
+        # print("State size:", asizeof.asizeof(state))
+        # print("Sim size:", asizeof.asizeof(self))
+        # print("Driver list size", asizeof.asizeof(self.__get_drivers_list()))
+        # print("Driver state size", asizeof.asizeof(state[10]))
         return state
+
+    def set_simulation_state(self, state: tuple) -> None:
+        self.cur_lap = state[0]
+        self.laptimes = copy.deepcopy(state[1])
+        self.racetimes = copy.deepcopy(state[2])
+        self.bool_driving = copy.deepcopy(state[3])
+        self.flagstates = copy.deepcopy(state[4])
+        self.overtake_allowed = copy.deepcopy(state[5])
+        self.positions = copy.deepcopy(state[6])
+        self.progress = copy.deepcopy(state[7])
+        self.pit_driver_idxs = copy.deepcopy(state[8])
+        self.pit_outlap_losses = copy.deepcopy(state[9])
+
+        for i in range(len(state[10])):
+            driver = state[10][i]
+            controlled_driver = driver[2] in self.controlled_drivers  # driver[2] is the car number
+            self.drivers_list[i].set_driver_state(driver, controlled=controlled_driver)
 
     # ------------------------------------------------------------------------------------------------------------------
     # METHODS (MAIN METHODS) -------------------------------------------------------------------------------------------
@@ -561,6 +597,8 @@ class Race(MonteCarlo, RaceAnalysis):
         # simulate race lap by lap
         while self.cur_lap < self.race_pars["tot_no_laps"]:
             self.__simulate_lap()
+            # print(self.get_cur_lap())
+            # self.get_simulation_state()
 
         self.__race_conclusion()
 
