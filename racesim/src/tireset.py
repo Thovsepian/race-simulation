@@ -77,6 +77,21 @@ class Tireset(object):
     def __set_tireset_pars(self, x: dict) -> None: self.__tireset_pars = x
     tireset_pars = property(__get_tireset_pars, __set_tireset_pars)
 
+    def get_tireset_state(self) -> tuple:
+        state = (self.compound,
+                 self.age_tot,
+                 self.age_curstint,
+                 self.age_degr,
+                 copy.deepcopy(self.tireset_pars))
+        return state
+
+    def set_tireset_state(self, state: tuple) -> None:
+        self.compound = state[0]
+        self.age_tot = state[1]
+        self.age_curstint = state[2]
+        self.age_degr = state[3]
+        self.tireset_pars = copy.deepcopy(state[4])
+
     # ------------------------------------------------------------------------------------------------------------------
     # METHODS ----------------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
