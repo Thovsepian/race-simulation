@@ -281,14 +281,13 @@ class Race(MonteCarlo, RaceAnalysis):
             car_number = int(car_number)
             for driver in self.drivers_list:
                 if driver.carno == car_number:
-                    starting_strategy = driver.strategy_info[0]
                     for i in range(len(driver.strategy_info)):
                         if driver.strategy_info[i][0] > self.__cur_lap:
                             # Remove any strategy beyond the current (start of controlled simulation) lap
                             driver.strategy_info = driver.strategy_info[:i]
                             break
                     # Define the start compound for any of the controlled drivers
-                    start_strategies[driver.carno] = starting_strategy[1]
+                    start_strategies[driver.carno] = copy.deepcopy(driver.strategy_info)
 
         return start_strategies
 
