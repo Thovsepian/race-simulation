@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import random
 import math
@@ -33,14 +35,19 @@ class MonteCarlo(object):
     The race progress is within the range [0.0, tot_no_laps], where 0.0 corresponds to the start of the first lap.
     """
 
-    def create_random_events(self) -> tuple:
+    def create_random_events(self, lap=0) -> tuple:
 
         # initialization
-        fcy_data = {"phases": [],
-                    "domain": 'progress'}
+        # fcy_data = {"phases": [],
+        #             "domain": 'progress'}
+        #
+        # retire_data = {"retirements": [None] * self.no_drivers,
+        #                "domain": 'progress'}
 
-        retire_data = {"retirements": [None] * self.no_drivers,
-                       "domain": 'progress'}
+        fcy_data = deepcopy(self.fcy_data_progress)
+        retire_data = deepcopy(self.retire_data_progress)
+        assert fcy_data["domain"] == "progress" and retire_data["domain"] == "progress", \
+            "Cannot process time domain random events"
 
         # --------------------------------------------------------------------------------------------------------------
         # DETERMINE SC PHASES ------------------------------------------------------------------------------------------
@@ -49,6 +56,8 @@ class MonteCarlo(object):
         # determine number of SC phases (0 - 3) for the race
         no_sc = random.choices(list(range(0, len(self.monte_carlo_pars["p_sc_quant"]))),
                                self.monte_carlo_pars["p_sc_quant"])[0]
+
+        past_sc = 0 # Count events generated in the past and then discarded
 
         if no_sc > 0:
             # p_sc_start is a list with 6 individual probabilities: [p_firstlap, p<20%, p<40%, p<60%, p<80%, p<100%]
@@ -72,37 +81,50 @@ class MonteCarlo(object):
             choices = list(range(0, self.race_pars["tot_no_laps"]))
             probs = list(probs)
 
+            # Cut the lists from current lap on, to allow generation from an existing state
+            choices = choices[lap:]
+            probs = probs[lap:]
+
+            # Remove all future data
+            for phase in fcy_data["phases"]:
+                if phase[0] < lap:
+                    no_sc -= 1
+                    if phase[1] > lap: # Randomize the end of safety cars currently on track
+                        end = self.compute_sc_end_prog(phase[0])
+                        phase[1] = max(lap, end)
+                else:
+                    # Remove FCY phase and corresponding retirement
+                    fcy_data["phases"].remove(phase)
+                    for i, retire_lap in enumerate(retire_data["retirements"]):
+                        if retire_lap is not None and phase[0] <= retire_lap <= phase[1]:
+                            retire_data["retirements"][i] = None
+
             # determine start and stop race progress for every SC phase
-            while len(fcy_data["phases"]) < no_sc:
+            while len(fcy_data["phases"]) < no_sc - past_sc:
                 # start race progress (including random begin within start lap)
                 prog_start = random.choices(choices, probs)[0] + random.random()
 
-                # assure that SC phase is started more than a lap before the end of the race -> after that it makes no
-                # more sense to send it on the track since drivers will not catch up until the end
-                if prog_start > self.race_pars["tot_no_laps"] - 1.0:
-                    continue
+                if prog_start > lap:
+                    # assure that SC phase is started more than a lap before the end of the race -> after that it makes no
+                    # more sense to send it on the track since drivers will not catch up until the end
+                    if prog_start > self.race_pars["tot_no_laps"] - 1.0:
+                        continue
 
-                # determine duration of SC phase
-                sc_dur = float(random.choices(list(range(1, len(self.monte_carlo_pars["p_sc_duration"]) + 1)),
-                                              self.monte_carlo_pars["p_sc_duration"])[0])
+                    prog_stop = self.compute_sc_end_prog(prog_start)
 
-                # set stop race progress to a full lap for the SC -> floor since the durations are always over-estimated
-                prog_stop = float(math.floor(prog_start + sc_dur))
+                    # append created phase temporarily and remove it again if it intersects another one
+                    fcy_data["phases"].append([prog_start, prog_stop, 'SC', None, None])
 
-                if prog_stop > self.race_pars["tot_no_laps"]:
-                    prog_stop = float(self.race_pars["tot_no_laps"])
-
-                # append created phase temporarily and remove it again if it intersects another one
-                fcy_data["phases"].append([prog_start, prog_stop, 'SC', None, None])
-
-                if self.check_fcyphase_intersection(fcy_data=fcy_data):
-                    del fcy_data["phases"][-1]
+                    if self.check_fcyphase_intersection(fcy_data=fcy_data):
+                        del fcy_data["phases"][-1]
+                else:
+                    past_sc += 1
 
         # --------------------------------------------------------------------------------------------------------------
         # DETERMINE DRIVER ACCIDENTS -----------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
 
-        if no_sc > 0:
+        if no_sc - past_sc > 0:
             # get driver idxs and according accident probabilities
             choices = []
             probs = []
@@ -113,19 +135,20 @@ class MonteCarlo(object):
 
             # determine one driver per SC phase involved into the accident
             for cur_phase in fcy_data["phases"]:
-                # check if there are drivers without an retirement left for the current phase (if we simulate only a
-                # small amount of drivers) and break otherwise
-                if all(True if x is not None else False for x in retire_data["retirements"]):
-                    break
+                if cur_phase[0] > lap:  # Add retirements only for future SCs
+                    # check if there are drivers without an retirement left for the current phase (if we simulate only a
+                    # small amount of drivers) and break otherwise
+                    if all(True if x is not None else False for x in retire_data["retirements"]):
+                        break
 
-                # chose driver until a "free" driver is selected (who was not already selected for another phase)
-                idx_tmp = None
+                    # chose driver until a "free" driver is selected (who was not already selected for another phase)
+                    idx_tmp = None
 
-                while idx_tmp is None or retire_data["retirements"][idx_tmp] is not None:
-                    idx_tmp = random.choices(choices, probs)[0]
+                    while idx_tmp is None or retire_data["retirements"][idx_tmp] is not None:
+                        idx_tmp = random.choices(choices, probs)[0]
 
-                # save retirement information for selected driver
-                retire_data["retirements"][idx_tmp] = cur_phase[0]
+                    # save retirement information for selected driver
+                    retire_data["retirements"][idx_tmp] = cur_phase[0]
 
         # --------------------------------------------------------------------------------------------------------------
         # DETERMINE DRIVER FAILURES AND VSC PHASES ---------------------------------------------------------------------
@@ -166,6 +189,9 @@ class MonteCarlo(object):
                         if prog_start >= self.race_pars["tot_no_laps"] - 0.5:
                             continue
 
+                        if prog_start < lap: # VSC would have been in the past, no need to add it
+                            break
+
                         # determine duration of VSC phase and stop race progress
                         vsc_dur = random.choices(list(range(1, len(self.monte_carlo_pars["p_vsc_duration"]) + 1)),
                                                  self.monte_carlo_pars["p_vsc_duration"])[0] + random.random()
@@ -185,15 +211,26 @@ class MonteCarlo(object):
                 # if VSC was not induced determine failure race progress of the driver ---------------------------------
                 else:
                     # start race progress determined by a uniform distribution
-                    prog_start = random.random() * self.race_pars["tot_no_laps"]
+                    prog_start =  random.random() * self.race_pars["tot_no_laps"]
 
                 # save retirement information for selected driver ------------------------------------------------------
-                retire_data["retirements"][idx] = prog_start
+                if prog_start >= lap:  # Add retirement only if it is in the future
+                    retire_data["retirements"][idx] = prog_start
 
         # sort FCY phase list by start race progress when finished
         fcy_data["phases"].sort(key=lambda x: x[0])
 
         return fcy_data, retire_data
+
+    def compute_sc_end_prog(self, prog_start):
+        # determine duration of SC phase
+        sc_dur = float(random.choices(list(range(1, len(self.monte_carlo_pars["p_sc_duration"]) + 1)),
+                                      self.monte_carlo_pars["p_sc_duration"])[0])
+        # set stop race progress to a full lap for the SC -> floor since the durations are always over-estimated
+        prog_stop = float(math.floor(prog_start + sc_dur))
+        if prog_stop > self.race_pars["tot_no_laps"]:
+            prog_stop = float(self.race_pars["tot_no_laps"])
+        return prog_stop
 
     def check_fcyphase_intersection(self, fcy_data: dict) -> bool:
         """This function checks the inserted FCY data for intersections. In case of 'progress' it checks if the inserted
@@ -281,7 +318,7 @@ class MonteCarlo(object):
                                  fcy_phases=self.fcy_data["phases"],
                                  t_lap_sc=self.track.t_lap_sc,
                                  t_lap_fcy=self.track.t_lap_fcy,
-                                 deact_pitstop_warn=False)
+                                 deact_pitstop_warn=True)
 
         t_race_lapwise_tmp = np.insert(t_race_lapwise_tmp, 0, 0.0)  # add race time 0.0s for lap 0
 

@@ -152,9 +152,9 @@ class Race(MonteCarlo, RaceAnalysis):
         self.progress = np.zeros(self.no_drivers)
 
         # create FCY related arrays
-        self.fcy_data = copy.deepcopy(event_pars["fcy_data"])  # create copy to avoid changing the original dict
+        self.fcy_data_progress = copy.deepcopy(event_pars["fcy_data"])  # create copy to avoid changing the original dict
 
-        self.retire_data = copy.deepcopy(event_pars["retire_data"])  # create copy to avoid changing the original dict
+        self.retire_data_progress = copy.deepcopy(event_pars["retire_data"])  # create copy to avoid changing the original dict
 
         self.fcy_handling = {"sc_ghost_racetimes": [None] * self.no_drivers,
                              "sc_ghost_laps": [None] * self.no_drivers,
@@ -175,10 +175,10 @@ class Race(MonteCarlo, RaceAnalysis):
         # --------------------------------------------------------------------------------------------------------------
 
         # set retirements per driver (if set in the parameter file, i.e. a filled list was inserted)
-        if self.retire_data["retirements"] is not None and self.retire_data["retirements"]:
+        if self.retire_data_progress["retirements"] is not None and self.retire_data_progress["retirements"]:
             retirements_per_driver = [None] * self.no_drivers
 
-            for cur_retirement in self.retire_data["retirements"]:
+            for cur_retirement in self.retire_data_progress["retirements"]:
                 # find current driver index
                 idx_driver = next((idx for idx, driver in enumerate(self.drivers_list)
                                    if driver.initials == cur_retirement[0]), None)
@@ -186,7 +186,7 @@ class Race(MonteCarlo, RaceAnalysis):
                 # set according retirement value
                 retirements_per_driver[idx_driver] = cur_retirement[1]
 
-            self.retire_data["retirements"] = retirements_per_driver
+            self.retire_data_progress["retirements"] = retirements_per_driver
 
         # set positions for lap 0 according to starting grid (use sorted indices to handle the case if not all grid
         # positions are set)
@@ -214,9 +214,9 @@ class Race(MonteCarlo, RaceAnalysis):
         # --------------------------------------------------------------------------------------------------------------
 
         # check for possible intersections between manually inserted FCY phases
-        if self.fcy_data["phases"] and self.check_fcyphase_intersection(fcy_data=self.fcy_data):
-            self.fix_fcyphase_intersection(self.fcy_data)
-            if self.check_fcyphase_intersection(fcy_data=self.fcy_data):
+        if self.fcy_data_progress["phases"] and self.check_fcyphase_intersection(fcy_data=self.fcy_data_progress):
+            self.fix_fcyphase_intersection(self.fcy_data_progress)
+            if self.check_fcyphase_intersection(fcy_data=self.fcy_data_progress):
                 raise ValueError("Manually inserted FCY phases either intersect or lie too close together (the race"
                                  " simulation can only handle one active phase per lap, therefore a minimum distance of"
                                  " %.1f laps (SC) and %.1f laps (VSC) is enforced between two phases)!"
@@ -224,41 +224,59 @@ class Race(MonteCarlo, RaceAnalysis):
 
         # create random events such as accidents or car failures if create_rand_events is True and empty lists were
         # given in the parameter file (such events must be determined in front of the actual race simulation)
-        if create_rand_events and type(self.fcy_data["phases"]) is list and len(self.fcy_data["phases"]) == 0:
+        if create_rand_events and type(self.fcy_data_progress["phases"]) is list and len(self.fcy_data_progress["phases"]) == 0:
             create_fcyphases = True
         else:
             create_fcyphases = False
 
-        if create_rand_events \
-                and type(self.retire_data["retirements"]) is list and len(self.retire_data["retirements"]) == 0:
+        if create_rand_events and type(self.retire_data_progress["retirements"]) is list \
+                and len(self.retire_data_progress["retirements"]) == 0:
             create_retirements = True
         else:
             create_retirements = False
 
-        if create_fcyphases or create_retirements:
-            fcy_data_tmp, retire_data_tmp = self.create_random_events()
+        self.create_fcyphases = create_fcyphases
+        self.create_retirements = create_retirements
 
-            if create_fcyphases:
-                self.fcy_data = fcy_data_tmp
-            if create_retirements:
-                self.retire_data = retire_data_tmp
+        self.fcy_data = copy.deepcopy(self.fcy_data_progress)
+        self.retire_data = copy.deepcopy(self.retire_data_progress)
+        self.handle_random_events_generation()
 
+    def handle_random_events_generation(self) -> None:
+        """Create and verify FCY and retirements events"""
+
+        self.fcy_handling = {"sc_ghost_racetimes": [None] * self.no_drivers,
+                             "sc_ghost_laps": [None] * self.no_drivers,
+                             "idxs_act_phase": [None] * self.no_drivers,
+                             "idxs_next_phase": [0] * self.no_drivers,
+                             "start_end_prog": [[None, None] for _ in range(self.no_drivers)]}
+
+        if self.create_fcyphases or self.create_retirements:
+            fcy_data_tmp, retire_data_tmp = self.create_random_events(lap=self.cur_lap)
+
+            if self.create_fcyphases:
+                self.fcy_data_progress = fcy_data_tmp
+                self.fcy_data = copy.deepcopy(fcy_data_tmp)
+            else:
+                self.fcy_data = copy.deepcopy(self.fcy_data_progress)
+            if self.create_retirements:
+                self.retire_data_progress = retire_data_tmp
+                self.retire_data = copy.deepcopy(retire_data_tmp)
+            else:
+                self.retire_data = copy.deepcopy(self.retire_data_progress)
         # make sure that fcy_data and retire_data have the correct form if they were not determined in the previous step
         if self.fcy_data["phases"] is None:
             self.fcy_data["phases"] = []
-
         if self.retire_data["retirements"] is None or not self.retire_data["retirements"]:
             self.retire_data["retirements"] = [None] * self.no_drivers
-
         """
-        If FCY phases are given and their domain is race progress we have to convert the progress information into the
-        time domain. This is done using a pre-simulation. In that case, retirements are also converted into the time
-        domain if they are given in the progress domain such that they can appear at the same point as an according FCY
-        phase. However, if the FCY phases are already given in the time domain the pre-simulation cannot handle them. In
-        this case (or if there are no FCY phases given at all) the retirements are not converted into the time domain
-        since there is no necessity because they can also be handled in the progress domain.
-        """
-
+                If FCY phases are given and their domain is race progress we have to convert the progress information into the
+                time domain. This is done using a pre-simulation. In that case, retirements are also converted into the time
+                domain if they are given in the progress domain such that they can appear at the same point as an according FCY
+                phase. However, if the FCY phases are already given in the time domain the pre-simulation cannot handle them. In
+                this case (or if there are no FCY phases given at all) the retirements are not converted into the time domain
+                since there is no necessity because they can also be handled in the progress domain.
+                """
         if self.fcy_data["domain"] == 'progress' and self.fcy_data["phases"]:
             # save progress information for VSE (required for pre simulation within reinforcement training)
             self.presim_info["fcy_phases_progress"] = copy.deepcopy(self.fcy_data["phases"])
@@ -270,6 +288,7 @@ class Race(MonteCarlo, RaceAnalysis):
             self.presim_info["race_duration"] = presim_info_tmp[0]
             if self.vse is not None:
                 self.presim_info["base_strategy_vse"] = presim_info_tmp[1]
+
 
     def set_controlled_drivers(self, driver_list: list) -> dict:
         """The method deletes strategic information for the drivers that should be controlled by an external agent,
@@ -291,9 +310,10 @@ class Race(MonteCarlo, RaceAnalysis):
 
         return start_strategies
 
-    #def get_controlled_drivers_tyres
+    def fix_fcyphase_intersection(self, fcy_data) -> None:
+        """Fix SC and VSC events not respecting the minimum time distance: in real race they they may be exactly
+        adjacent, but in this simulator they can't be, so we insert the minimum time required between the two events"""
 
-    def fix_fcyphase_intersection(self, fcy_data):
         for idx_1, cur_phase_1 in enumerate(fcy_data["phases"]):
             # set minimum distance based on domain and FCY phase type
             if fcy_data["domain"] == 'progress':
@@ -868,7 +888,10 @@ class Race(MonteCarlo, RaceAnalysis):
                 # ------------------------------------------------------------------------------------------------------
 
                 # get current phase information
-                cur_fcy_phase = self.fcy_data["phases"][self.fcy_handling["idxs_act_phase"][idx]]
+                try:
+                    cur_fcy_phase = self.fcy_data["phases"][self.fcy_handling["idxs_act_phase"][idx]]
+                except IndexError:
+                    print("A")
 
                 # update lap_influences dict of affected driver
                 self.drivers_list[idx].update_lap_influences(cur_lap=self.cur_lap,
