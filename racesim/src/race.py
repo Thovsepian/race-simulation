@@ -1,4 +1,6 @@
 # import own modules
+from itertools import compress
+
 from racesim.src.track import Track
 from racesim.src.driver import Driver
 from racesim.src.vse import VSE
@@ -888,10 +890,7 @@ class Race(MonteCarlo, RaceAnalysis):
                 # ------------------------------------------------------------------------------------------------------
 
                 # get current phase information
-                try:
-                    cur_fcy_phase = self.fcy_data["phases"][self.fcy_handling["idxs_act_phase"][idx]]
-                except IndexError:
-                    print("A")
+                cur_fcy_phase = self.fcy_data["phases"][self.fcy_handling["idxs_act_phase"][idx]]
 
                 # update lap_influences dict of affected driver
                 self.drivers_list[idx].update_lap_influences(cur_lap=self.cur_lap,
@@ -1216,13 +1215,14 @@ class Race(MonteCarlo, RaceAnalysis):
         for idx in self.__get_driver_iter():
             # get boolean list if any of the pitstop inlaps matches the current lap
             pit_b = [True if self.cur_lap == pitstop[0] else False for pitstop in self.drivers_list[idx].strategy_info]
-
+            pit_info = list(compress(self.drivers_list[idx].strategy_info, pit_b))
             if any(pit_b):
                 # save index of pitting driver
                 self.pit_driver_idxs.append(idx)
 
                 # update lap_influences dict of affected driver
-                self.drivers_list[idx].update_lap_influences(cur_lap=self.cur_lap, influence_type='pitinlap')
+                influence_str = 'pitinlap-'+ pit_info[0][1]  # Read next tireset and append it to influence strings
+                self.drivers_list[idx].update_lap_influences(cur_lap=self.cur_lap, influence_type=influence_str)
 
                 # create variable to save pit time loss
                 timeloss_pit = 0.0

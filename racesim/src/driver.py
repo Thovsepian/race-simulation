@@ -168,7 +168,9 @@ class Driver(object):
                     + self.t_driver)
 
     def update_lap_influences(self, cur_lap: int, influence_type: str):
-        if influence_type not in ["pitoutlap", "pitinlap", "sc", "vsc", "retiring"]:
+        if influence_type not in ["sc", "vsc", "retiring"] and \
+            "pitinlap" not in influence_type and \
+            "pitoutlap" not in influence_type:
             raise ValueError("Unknown influence type %s!" % influence_type)
 
         if cur_lap not in self.lap_influences:
