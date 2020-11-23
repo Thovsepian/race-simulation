@@ -312,6 +312,11 @@ class Race(MonteCarlo, RaceAnalysis):
 
         return start_strategies
 
+    def get_tyre_age(self, driver_carno: int) -> tuple:
+        index = self.drivers_mapping[driver_carno]
+        tireset = self.drivers_list[index].car.tireset
+        return tireset.compound, tireset.age_curstint
+
     def fix_fcyphase_intersection(self, fcy_data) -> None:
         """Fix SC and VSC events not respecting the minimum time distance: in real race they they may be exactly
         adjacent, but in this simulator they can't be, so we insert the minimum time required between the two events"""
