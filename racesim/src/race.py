@@ -95,14 +95,16 @@ class Race(MonteCarlo, RaceAnalysis):
                  create_rand_events: bool,
                  monte_carlo_pars: dict,
                  event_pars: dict,
-                 disable_retirements=False) -> None:
+                 disable_retirements=False,
+                 disable_events=False) -> None:
 
         # --------------------------------------------------------------------------------------------------------------
         # CREATE OTHER REQUIRED OBJECTS --------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
 
         # Flags for disabling features
-        self._enable_retirements = not disable_retirements
+        self._enable_retirements = not disable_retirements and not disable_events
+        self._enable_events = not disable_events
 
         # create driver list
         self.drivers_list = []
@@ -291,6 +293,11 @@ class Race(MonteCarlo, RaceAnalysis):
             if self.vse is not None:
                 self.presim_info["base_strategy_vse"] = presim_info_tmp[1]
 
+    def enable_reduced_mode(self):
+        """Execute a simplified simulation without stochasticity"""
+        self._enable_events = False
+        self._enable_retirements = False
+        self.use_prob_infl = False
 
     def set_controlled_drivers(self, driver_list: list) -> dict:
         """The method deletes strategic information for the drivers that should be controlled by an external agent,
@@ -575,6 +582,8 @@ class Race(MonteCarlo, RaceAnalysis):
         # check plausibility of result
         self.__check_plausibility()
 
+
+
     def simulate_race(self) -> None:
         """
         This is the main method than can be called from outside to simulate a race.
@@ -632,7 +641,8 @@ class Race(MonteCarlo, RaceAnalysis):
         self.__calc_laptimes()
 
         # handle fcy phases -> increase lap times, forbid overtaking etc. if driver is within a FCY phase
-        self.__handle_fcy()
+        if self._enable_events:
+            self.__handle_fcy()
 
         # increase car age (i.e. consider fuel mass loss and tire degradation)
         self.__increase_car_age()
@@ -652,7 +662,8 @@ class Race(MonteCarlo, RaceAnalysis):
         self.__handle_pitstop_inlap()
 
         # perform some actions related to FCY phases after final lap times are known for current lap
-        self.__fcy_phase_checks_aft_final_laptimes()
+        if self._enable_events:
+            self.__fcy_phase_checks_aft_final_laptimes()
 
         # calculate final racetimes at the end of the current lap
         self.racetimes[self.cur_lap, self.bool_driving[self.cur_lap]] = \
