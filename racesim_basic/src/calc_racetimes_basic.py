@@ -515,7 +515,7 @@ def calc_racetimes_basic(t_base: float,
     # CALCULATE LAPWISE RACE TIMES -------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
 
-    t_race_lapwise = np.cumsum(t_laps + t_laps_pit)
+    t_race_lapwise = np.cumsum(t_laps + t_laps_pit - 4)
 
     return t_race_lapwise, fcy_phases_conv
 
