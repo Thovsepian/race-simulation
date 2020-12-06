@@ -244,6 +244,7 @@ class Race(MonteCarlo, RaceAnalysis):
 
         self.fcy_data = copy.deepcopy(self.fcy_data_progress)
         self.retire_data = copy.deepcopy(self.retire_data_progress)
+
         self.handle_random_events_generation()
 
     def handle_random_events_generation(self) -> None:
@@ -255,8 +256,9 @@ class Race(MonteCarlo, RaceAnalysis):
                              "idxs_next_phase": [0] * self.no_drivers,
                              "start_end_prog": [[None, None] for _ in range(self.no_drivers)]}
 
-        if self.create_fcyphases or self.create_retirements:
-            fcy_data_tmp, retire_data_tmp = self.create_random_events(lap=self.cur_lap)
+        if (self.create_fcyphases or self.create_retirements) and ((self.cur_lap + 2) < self.race_pars["tot_no_laps"]):
+            # print(self.cur_lap, self.race_pars["tot_no_laps"])
+            fcy_data_tmp, retire_data_tmp = self.create_random_events(lap=self.cur_lap + 2 if self.cur_lap > 0 else self.cur_lap)
 
             if self.create_fcyphases:
                 self.fcy_data_progress = fcy_data_tmp

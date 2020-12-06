@@ -79,11 +79,10 @@ class MonteCarlo(object):
 
             # create lists
             choices = list(range(0, self.race_pars["tot_no_laps"]))
-            probs = list(probs)
 
             # Cut the lists from current lap on, to allow generation from an existing state
             choices = choices[lap:]
-            probs = probs[lap:]
+            probs = probs[lap:] + np.sum(probs[lap:]) / len(probs[lap:])
 
             # Remove all future data
             for phase in fcy_data["phases"]:
