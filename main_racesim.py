@@ -258,7 +258,7 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
 
     # set race parameter file names
-    race_pars_file_ = 'pars_Catalunya_2017.ini'
+    race_pars_file_ = 'pars_Melbourne_2017.ini'
     mcs_pars_file_ = 'pars_mcs.ini'
 
     # set simulation options
@@ -278,8 +278,8 @@ if __name__ == '__main__':
     sim_opts_ = {"use_prob_infl": True,
                  "create_rand_events": False,
                  "use_vse": True,
-                 "no_sim_runs": 1,
-                 "no_workers": 1,
+                 "no_sim_runs": 100,
+                 "no_workers": 10,
                  "use_print": True,
                  "use_print_result": True,
                  "use_plot": False}
@@ -287,7 +287,7 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
     # SIMULATION CALL --------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
-    for i in range(20):
+    for i in range(1):
         main(sim_opts=sim_opts_,
              race_pars_file=race_pars_file_,
              mcs_pars_file=mcs_pars_file_)

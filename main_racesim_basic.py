@@ -44,7 +44,7 @@ with open(requirements_path, 'r') as fh_:
         line = fh_.readline()
 
 # check dependencies
-pkg_resources.require(dependencies)
+# pkg_resources.require(dependencies)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
