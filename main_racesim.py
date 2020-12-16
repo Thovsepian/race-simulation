@@ -52,12 +52,15 @@ def main(sim_opts: dict, race_pars_file: str, mcs_pars_file: str) -> list:
     # INITIALIZATION ---------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
 
+    out_directory_name = race_pars_file[5:]
+    out_directory_name = out_directory_name[:-4]
+
     # get repo path
     repo_path = os.path.dirname(os.path.abspath(__file__))
 
     # create output folders (if not existing)
-    output_path = os.path.join(repo_path, "racesim", "output")
-
+    output_path = os.path.join(repo_path, "racesim", "output", out_directory_name)
+    
     results_path = os.path.join(output_path, "results")
     os.makedirs(results_path, exist_ok=True)
 
@@ -237,6 +240,9 @@ def main(sim_opts: dict, race_pars_file: str, mcs_pars_file: str) -> list:
     # MULTIPLE RACES ---------------------------------------------------------------------------------------------------
     else:
         # plot histograms
+        for result in race_results:
+            result.export_results_as_csv(results_path=results_path)
+
         racesim.src.mcs_analysis.mcs_analysis(race_results=race_results,
                                               use_print_result=sim_opts["use_print_result"],
                                               use_plot=sim_opts["use_plot"])
