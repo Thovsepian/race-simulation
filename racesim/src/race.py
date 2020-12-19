@@ -129,6 +129,9 @@ class Race(MonteCarlo, RaceAnalysis):
             self.vse = VSE(vse_paths=vse_paths,
                            vse_pars=vse_pars)
 
+        self.enable_vse = self.vse is not None
+        self.vse_enabled_drivers = None
+
         # --------------------------------------------------------------------------------------------------------------
         # INITIALIZE RACE OBJECT ---------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
@@ -360,6 +363,12 @@ class Race(MonteCarlo, RaceAnalysis):
     # ------------------------------------------------------------------------------------------------------------------
     # GETTERS / SETTERS ------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
+
+    def set_enable_vse(self, x: bool) -> None:
+        self.enable_vse = x
+
+    def set_vse_enabled_drivers(self, x: list) -> None:
+        self.vse_enabled_drivers = set(copy.deepcopy(x))
 
     def __get_cur_lap(self) -> int:
         return self.__cur_lap
@@ -658,7 +667,8 @@ class Race(MonteCarlo, RaceAnalysis):
         self.__handle_overtaking_track()
 
         # if VSE (virtual strategy engineer) is used it has to take the strategy decisions here
-        self.__handle_vse()
+        if self.enable_vse:
+            self.__handle_vse()
 
         # check for pitstop inlaps
         self.__handle_pitstop_inlap()
@@ -1195,6 +1205,10 @@ class Race(MonteCarlo, RaceAnalysis):
         if self.vse is not None:
             # take tirechange decisions (are set None for retired drivers) (important: the decisions are taken based on
             # the data at the end of the previous lap (with some exceptions, e.g. FCY status))
+
+            if self.vse_enabled_drivers is not None:
+                drivers_to_consider = [driver for driver in self.drivers_list if driver.carno in self.vse_enabled_drivers]
+
             next_compound = self.vse. \
                 decide_pitstop(driver_initials=[driver.initials for driver in self.drivers_list],
                                cur_compounds=[driver.car.tireset.compound for driver in self.drivers_list],
@@ -1218,7 +1232,12 @@ class Race(MonteCarlo, RaceAnalysis):
             # update strategy info for affected drivers
             for idx, compound in enumerate(next_compound):
                 if compound is not None:
-                    self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
+                    if self.vse_enabled_drivers is not None:
+                        if self.drivers_list[idx].carno in self.vse_enabled_drivers:
+                            self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
+                    else:
+                        self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
+
 
     def __handle_pitstop_inlap(self) -> None:
         """
