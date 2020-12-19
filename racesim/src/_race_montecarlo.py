@@ -34,6 +34,180 @@ class MonteCarlo(object):
     Hint:
     The race progress is within the range [0.0, tot_no_laps], where 0.0 corresponds to the start of the first lap.
     """
+    def create_manual_events (self, lap =0, type = 'VSC', force = True, stop =-1) -> tuple: # If force = True, a vsc is generated, otherwise it is sampled from vsc|failure distribution
+        # initialization
+        # fcy_data = {"phases": [],
+        #             "domain": 'progress'}
+        #
+        # retire_data = {"retirements": [None] * self.no_drivers,
+        #                "domain": 'progress'}
+        #print("[DEBUG] lap--> {}".format(lap))
+        fcy_data = deepcopy(self.fcy_data_progress)
+        retire_data = deepcopy(self.retire_data_progress)
+        assert fcy_data["domain"] == "progress" and retire_data["domain"] == "progress", \
+            "Cannot process time domain random events"
+
+        prog_start = lap
+
+        #print("[DEBUG] Initial phases--> " + str(fcy_data))
+
+        if type == 'SC':
+            # --------------------------------------------------------------------------------------------------------------
+            # DETERMINE SC PHASES ------------------------------------------------------------------------------------------
+            # --------------------------------------------------------------------------------------------------------------
+            # assure that SC phase is started more than a lap before the end of the race -> after that it makes no
+            # more sense to send it on the track since drivers will not catch up until the end
+            if prog_start > self.race_pars["tot_no_laps"] - 1.0:
+                if stop!= -1:
+                    prog_stop = stop
+                else:
+                    prog_stop = self.compute_sc_end_prog(prog_start)
+
+                # append created phase temporarily and remove it again if it intersects another one
+                fcy_data = self.insert_manual_intersection(fcy_data, [prog_start, prog_stop, 'SC', None, None], stop)
+                #print("[DEBUG] After add SC-- > " +str(fcy_data))
+                # --------------------------------------------------------------------------------------------------------------
+                # DETERMINE DRIVER ACCIDENTS -----------------------------------------------------------------------------------
+                # --------------------------------------------------------------------------------------------------------------
+
+                # get driver idxs and according accident probabilities
+                choices = []
+                probs = []
+
+                for idx, cur_driver in enumerate(self.drivers_list):
+                    choices.append(idx)
+                    probs.append(cur_driver.p_accident)
+
+                # determine one driver per SC phase involved into the accident
+                for cur_phase in fcy_data["phases"]:
+                    if cur_phase[0] > lap:  # Add retirements only for future SCs
+                        # check if there are drivers without an retirement left for the current phase (if we simulate only a
+                        # small amount of drivers) and break otherwise
+                        if all(True if x is not None else False for x in retire_data["retirements"]):
+                            break
+
+                        # chose driver until a "free" driver is selected (who was not already selected for another phase)
+                        idx_tmp = None
+
+                        while idx_tmp is None or retire_data["retirements"][idx_tmp] is not None:
+                            idx_tmp = random.choices(choices, probs)[0]
+
+                        # save retirement information for selected driver
+                        retire_data["retirements"][idx_tmp] = cur_phase[0]
+        elif type == 'VSC':
+            # --------------------------------------------------------------------------------------------------------------
+            # DETERMINE DRIVER FAILURES AND VSC PHASES ---------------------------------------------------------------------
+            # --------------------------------------------------------------------------------------------------------------
+
+            """Driver failures and VSC phases should be determined together. This avoids the situation when a driver failure
+            happens during an already existing SC phase and should induce a VSC phase."""
+            created = False
+            for idx, cur_driver in enumerate(self.drivers_list):
+
+                # if current driver is already involved in an accident continue to next driver
+                if retire_data["retirements"][idx] is not None:
+                    continue
+
+                # determine failure ----------------------------------------------------------------------------------------
+                probs = [1.0 - cur_driver.car.p_failure,
+                         cur_driver.car.p_failure]
+
+                failure = random.choices([False, True], probs)[0]
+
+                if (failure or force):
+                    # determine if VSC appears for current failure ---------------------------------------------------------
+                    probs = [1.0 - self.monte_carlo_pars["p_vsc_aft_failure"],
+                             self.monte_carlo_pars["p_vsc_aft_failure"]]
+
+                    vsc = random.choices([False, True], probs)[0]
+
+                    # if VSC phase was induced determine according start and stop lap --------------------------------------
+                    if (vsc or force) and not created:
+                        if stop != -1:
+                            prog_stop = stop
+                        else:
+                            # determine duration of VSC phase and stop race progress
+                            vsc_dur = random.choices(list(range(1, len(self.monte_carlo_pars["p_vsc_duration"]) + 1)),
+                                                     self.monte_carlo_pars["p_vsc_duration"])[0] + random.random()
+                            prog_stop = prog_start + vsc_dur
+
+                            if prog_stop > self.race_pars["tot_no_laps"]:
+                                prog_stop = float(self.race_pars["tot_no_laps"])
+
+
+                        # append created phase temporarily and remove it again if it intersects another one
+                        fcy_data = self.insert_manual_intersection(fcy_data,
+                                                                   [prog_start, prog_stop, 'VSC', None, None], stop)
+                        #print("[DEBUG] After add VSC-- > " + str(fcy_data))
+
+
+                    # if VSC was not induced determine failure race progress of the driver ---------------------------------
+                    else:
+                        # start race progress determined by a uniform distribution
+                        prog_start = random.random() * self.race_pars["tot_no_laps"]
+
+                    # save retirement information for selected driver ------------------------------------------------------
+                    if prog_start >= lap:  # Add retirement only if it is in the future
+                        retire_data["retirements"][idx] = prog_start
+
+            # sort FCY phase list by start race progress when finished
+            fcy_data["phases"].sort(key=lambda x: x[0])
+
+        else:
+            print("Wrong type for manual FCY phases")
+
+        return fcy_data, retire_data
+
+    def insert_manual_intersection(self, fcy_data: dict, phase, stop) -> dict:
+        temp_fcy_data = deepcopy(fcy_data)
+        # sort FCY phase list by start race progress when finished
+        temp_fcy_data["phases"].sort(key=lambda x: x[0])
+        overlapping = self.check_fcy_ongoing(temp_fcy_data, phase[0])
+        if overlapping: #There is an ongoing fcy phase
+            #randomize end of ongoing TODO: check how to randomize
+            current = []
+            for ph in fcy_data["phases"]:
+                if phase[0] in range(int(ph[0]), int(ph[1]) + 2):
+                    current = ph
+                    break
+            #print("[DEBUG] current--> " + str(current))
+            if stop != -1:
+                current[1] = stop
+            else:
+                current[1] = self.compute_sc_end_prog(phase[0])
+
+        else:
+            temp_fcy_data['phases'].append(phase)
+            temp_fcy_data["phases"].sort(key=lambda x: x[0])
+            #check and delete future overlaps
+            temp_fcy_data = self.clean_future_overlaps(temp_fcy_data, phase[0], phase[1])
+
+        return temp_fcy_data
+
+    def clean_future_overlaps(self, fcy_data: dict, start, stop) ->dict:
+        n = len(fcy_data["phases"])
+        next = []
+        for i in range(n):
+            if fcy_data["phases"][i][0] == start:
+                if i+1<n:
+                    next = fcy_data["phases"][i+1]
+                    break
+        if len(next)>0:
+            if stop in range(int(next[0])-2, int(next[1])):
+                del fcy_data["phases"][i+1]
+        return fcy_data
+
+    def check_fcy_ongoing(self, fcy_data: dict, start) -> bool:
+        prev = []
+        for ph in fcy_data["phases"]:
+            if  start in range(int(ph[0]), int(ph[1]) + 3):
+                prev = ph
+                break
+        if len(prev)>0:
+            #print("[DEBUG] in check_ongoing-->"+str(prev))
+            return True
+        return False
+
 
     def create_random_events(self, lap=0) -> tuple:
 
@@ -98,10 +272,14 @@ class MonteCarlo(object):
                         if retire_lap is not None and phase[0] <= retire_lap <= phase[1]:
                             retire_data["retirements"][i] = None
 
+            prog_start = 0
             # determine start and stop race progress for every SC phase
-            while len(fcy_data["phases"]) < no_sc - past_sc:
-                # start race progress (including random begin within start lap)
-                prog_start = random.choices(choices, probs)[0] + random.random()
+            while len(fcy_data['phases']) < no_sc - past_sc:
+                if prog_start ==0:
+                    # start race progress (including random begin within start lap)
+                    prog_start = random.choices(choices, probs)[0] + random.random()
+                else:
+                    prog_start += 1
 
                 if prog_start > lap:
                     # assure that SC phase is started more than a lap before the end of the race -> after that it makes no
@@ -114,8 +292,14 @@ class MonteCarlo(object):
                     # append created phase temporarily and remove it again if it intersects another one
                     fcy_data["phases"].append([prog_start, prog_stop, 'SC', None, None])
 
-                    if self.check_fcyphase_intersection(fcy_data=fcy_data):
-                        del fcy_data["phases"][-1]
+                    if self.check_fcyphase_intersection(fcy_data=fcy_data): #TODO: fix this with a function that delete future fcy overlpapping the manual and
+                                                                            #TODO: traslate the manual if it overlaps with a past one
+                        for phase in fcy_data["phases"]:
+                            if phase[1] > prog_start - 2:
+                                del fcy_data["phases"][-1]
+                                prog_start += 1
+                            if prog_stop > phase[0] - 2:
+                                prog_start -= 1
                 else:
                     past_sc += 1
 
@@ -230,6 +414,8 @@ class MonteCarlo(object):
         if prog_stop > self.race_pars["tot_no_laps"]:
             prog_stop = float(self.race_pars["tot_no_laps"])
         return prog_stop
+
+
 
     def check_fcyphase_intersection(self, fcy_data: dict) -> bool:
         """This function checks the inserted FCY data for intersections. In case of 'progress' it checks if the inserted
