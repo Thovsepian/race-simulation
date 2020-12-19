@@ -77,7 +77,7 @@ class Race(MonteCarlo, RaceAnalysis):
                  "__vse",  # ML model handling pit stop decisions
                  # result arrays ---------------------------------------------------------------------------------------
                  "__flagstates",  # list with flag states of the race (with regard to the leader's lap)
-                 "__result_status")  # integer indicating if the result is valid or not (and why)
+                 "__result_status",)  # integer indicating if the result is valid or not (and why)
 
     # ------------------------------------------------------------------------------------------------------------------
     # CONSTRUCTOR ------------------------------------------------------------------------------------------------------
@@ -250,6 +250,55 @@ class Race(MonteCarlo, RaceAnalysis):
 
         self.handle_random_events_generation()
 
+    def handle_custom_fcy_generation(self, type, stop = -1) -> None:
+        """Create and verify FCY and retirements events"""
+        self.create_fcyphases = True
+        self.fcy_handling = {"sc_ghost_racetimes": [None] * self.no_drivers,
+                             "sc_ghost_laps": [None] * self.no_drivers,
+                             "idxs_act_phase": [None] * self.no_drivers,
+                             "idxs_next_phase": [0] * self.no_drivers,
+                             "start_end_prog": [[None, None] for _ in range(self.no_drivers)]}
+
+        if (self.create_fcyphases or self.create_retirements) and ((self.cur_lap + 2) < self.race_pars["tot_no_laps"]):
+            # print(self.cur_lap, self.race_pars["tot_no_laps"])
+            fcy_data_tmp, retire_data_tmp = self.create_manual_events(lap=self.cur_lap + 2 if self.cur_lap > 0 else self.cur_lap, type = type, stop = stop)
+            #print("[DEBUG] "+str(fcy_data_tmp))
+            if self.create_fcyphases:
+                self.fcy_data_progress = fcy_data_tmp
+                self.fcy_data = copy.deepcopy(fcy_data_tmp)
+            else:
+                self.fcy_data = copy.deepcopy(self.fcy_data_progress)
+            if self.create_retirements:
+                self.retire_data_progress = retire_data_tmp
+                self.retire_data = copy.deepcopy(retire_data_tmp)
+            else:
+                self.retire_data = copy.deepcopy(self.retire_data_progress)
+        # make sure that fcy_data and retire_data have the correct form if they were not determined in the previous step
+        if self.fcy_data["phases"] is None:
+            self.fcy_data["phases"] = []
+        if self.retire_data["retirements"] is None or not self.retire_data["retirements"]:
+            self.retire_data["retirements"] = [None] * self.no_drivers
+        """
+                If FCY phases are given and their domain is race progress we have to convert the progress information into the
+                time domain. This is done using a pre-simulation. In that case, retirements are also converted into the time
+                domain if they are given in the progress domain such that they can appear at the same point as an according FCY
+                phase. However, if the FCY phases are already given in the time domain the pre-simulation cannot handle them. In
+                this case (or if there are no FCY phases given at all) the retirements are not converted into the time domain
+                since there is no necessity because they can also be handled in the progress domain.
+                """
+        if self.fcy_data["domain"] == 'progress' and self.fcy_data["phases"]:
+            # save progress information for VSE (required for pre simulation within reinforcement training)
+            self.presim_info["fcy_phases_progress"] = copy.deepcopy(self.fcy_data["phases"])
+
+            #print("[DEBUG] before call--> " + str(fcy_data_tmp["phases"]))
+            # convert race progress to race time using a pre simulation
+            presim_info_tmp = self.convert_raceprog_to_racetimes()
+
+            # save pre-simulation race duration and base strategy (in case of VSE) for postprocessing
+            self.presim_info["race_duration"] = presim_info_tmp[0]
+            if self.vse is not None:
+                self.presim_info["base_strategy_vse"] = presim_info_tmp[1]
+
     def handle_random_events_generation(self) -> None:
         """Create and verify FCY and retirements events"""
 
@@ -262,7 +311,6 @@ class Race(MonteCarlo, RaceAnalysis):
         if (self.create_fcyphases or self.create_retirements) and ((self.cur_lap + 2) < self.race_pars["tot_no_laps"]):
             # print(self.cur_lap, self.race_pars["tot_no_laps"])
             fcy_data_tmp, retire_data_tmp = self.create_random_events(lap=self.cur_lap + 2 if self.cur_lap > 0 else self.cur_lap)
-
             if self.create_fcyphases:
                 self.fcy_data_progress = fcy_data_tmp
                 self.fcy_data = copy.deepcopy(fcy_data_tmp)
