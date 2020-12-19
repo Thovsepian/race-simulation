@@ -47,6 +47,9 @@ class MonteCarlo(object):
         assert fcy_data["domain"] == "progress" and retire_data["domain"] == "progress", \
             "Cannot process time domain random events"
 
+        if stop <= lap:
+            print("[WARNING] Stop lap is too low, it has automatically been increased")
+            stop = lap+1
         prog_start = lap
 
         #print("[DEBUG] Initial phases--> " + str(fcy_data))
