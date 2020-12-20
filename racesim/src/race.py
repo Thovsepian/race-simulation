@@ -250,7 +250,7 @@ class Race(MonteCarlo, RaceAnalysis):
 
         self.handle_random_events_generation()
 
-    def handle_custom_fcy_generation(self, type, stop = -1) -> None:
+    def handle_custom_fcy_generation(self, fcy_type, stop = -1) -> None:
         """Create and verify FCY and retirements events"""
         self.create_fcyphases = True
         self.fcy_handling = {"sc_ghost_racetimes": [None] * self.no_drivers,
@@ -261,7 +261,7 @@ class Race(MonteCarlo, RaceAnalysis):
 
         if (self.create_fcyphases or self.create_retirements) and ((self.cur_lap + 2) < self.race_pars["tot_no_laps"]):
             # print(self.cur_lap, self.race_pars["tot_no_laps"])
-            fcy_data_tmp, retire_data_tmp = self.create_manual_events(lap=self.cur_lap + 2 if self.cur_lap > 0 else self.cur_lap, type = type, stop = stop)
+            fcy_data_tmp, retire_data_tmp = self.create_manual_events(lap=self.cur_lap + 2 if self.cur_lap > 0 else self.cur_lap, fcy_type=fcy_type, stop=stop)
             #print("[DEBUG] "+str(fcy_data_tmp))
             if self.create_fcyphases:
                 self.fcy_data_progress = fcy_data_tmp
