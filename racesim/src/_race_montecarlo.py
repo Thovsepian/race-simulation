@@ -34,7 +34,7 @@ class MonteCarlo(object):
     Hint:
     The race progress is within the range [0.0, tot_no_laps], where 0.0 corresponds to the start of the first lap.
     """
-    def create_manual_events (self, lap =0, type = 'VSC', force = True, stop =-1) -> tuple: # If force = True, a vsc is generated, otherwise it is sampled from vsc|failure distribution
+    def create_manual_events (self, lap=0, fcy_type ='VSC', force = True, stop =-1) -> tuple: # If force = True, a vsc is generated, otherwise it is sampled from vsc|failure distribution
         # initialization
         # fcy_data = {"phases": [],
         #             "domain": 'progress'}
@@ -47,6 +47,8 @@ class MonteCarlo(object):
         assert fcy_data["domain"] == "progress" and retire_data["domain"] == "progress", \
             "Cannot process time domain random events"
 
+        # print(stop, lap, type(stop), type(lap))
+
         if stop <= lap:
             print("[WARNING] Stop lap is too low, it has automatically been increased")
             stop = lap+1
@@ -54,7 +56,7 @@ class MonteCarlo(object):
 
         #print("[DEBUG] Initial phases--> " + str(fcy_data))
 
-        if type == 'SC':
+        if fcy_type == 'SC':
             # --------------------------------------------------------------------------------------------------------------
             # DETERMINE SC PHASES ------------------------------------------------------------------------------------------
             # --------------------------------------------------------------------------------------------------------------
@@ -97,7 +99,7 @@ class MonteCarlo(object):
 
                         # save retirement information for selected driver
                         retire_data["retirements"][idx_tmp] = cur_phase[0]
-        elif type == 'VSC':
+        elif fcy_type == 'VSC':
             # --------------------------------------------------------------------------------------------------------------
             # DETERMINE DRIVER FAILURES AND VSC PHASES ---------------------------------------------------------------------
             # --------------------------------------------------------------------------------------------------------------
