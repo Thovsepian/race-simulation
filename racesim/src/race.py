@@ -83,6 +83,15 @@ class Race(MonteCarlo, RaceAnalysis):
     # CONSTRUCTOR ------------------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
 
+    # def __deepcopy__(self, memodict={}):
+    #     if self.vse is not None:
+    #         self.vse = None
+    #         new = copy.deepcopy(self)
+    #         new.vse = VSE(vse_paths=self.vse_paths, vse_pars=self.vse_pars)
+    #     else:
+    #         new = copy.deepcopy(self)
+    #     return new
+
     def __init__(self,
                  race_pars: dict,
                  driver_pars: dict,
@@ -128,6 +137,8 @@ class Race(MonteCarlo, RaceAnalysis):
         else:
             self.vse = VSE(vse_paths=vse_paths,
                            vse_pars=vse_pars)
+            self.vse_paths = vse_paths
+            self.vse_pars = vse_pars
 
         self.enable_vse = self.vse is not None
         self.vse_enabled_drivers = None
@@ -1254,9 +1265,6 @@ class Race(MonteCarlo, RaceAnalysis):
             # take tirechange decisions (are set None for retired drivers) (important: the decisions are taken based on
             # the data at the end of the previous lap (with some exceptions, e.g. FCY status))
 
-            if self.vse_enabled_drivers is not None:
-                drivers_to_consider = [driver for driver in self.drivers_list if driver.carno in self.vse_enabled_drivers]
-
             next_compound = self.vse. \
                 decide_pitstop(driver_initials=[driver.initials for driver in self.drivers_list],
                                cur_compounds=[driver.car.tireset.compound for driver in self.drivers_list],
@@ -1280,9 +1288,8 @@ class Race(MonteCarlo, RaceAnalysis):
             # update strategy info for affected drivers
             for idx, compound in enumerate(next_compound):
                 if compound is not None:
-                    if self.vse_enabled_drivers is not None:
-                        if self.drivers_list[idx].carno in self.vse_enabled_drivers:
-                            self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
+                    if self.vse_enabled_drivers is not None and self.drivers_list[idx].carno in self.vse_enabled_drivers:
+                        self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
                     else:
                         self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
 

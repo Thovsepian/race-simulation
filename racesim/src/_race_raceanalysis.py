@@ -1,3 +1,4 @@
+import random
 from datetime import datetime
 
 import numpy as np
@@ -494,9 +495,14 @@ class RaceAnalysis(object):
         today = datetime.now()
         timestamp = str(int(today.timestamp() * 1000))
 
-        racetimes_file_path = os.path.join(results_path, "%s_%s_%i_racetimes.csv" % (timestamp, location, season))
-        laptimes_file_path = os.path.join(results_path, "%s_%s_%i_laptimes.csv" % (timestamp, location, season))
-        positions_file_path = os.path.join(results_path, "%s_%s_%i_positions.csv" % (timestamp, location, season))
+        # print("saving in", results_path)
+
+
+        random_protection = random.randint(0, 100000)
+
+        racetimes_file_path = os.path.join(results_path, "%s_%s_%s_%i_racetimes.csv" % (timestamp, random_protection, location, season))
+        laptimes_file_path = os.path.join(results_path, "%s_%s_%s_%i_laptimes.csv" % (timestamp, random_protection, location, season))
+        positions_file_path = os.path.join(results_path, "%s_%s_%s_%i_positions.csv" % (timestamp, random_protection, location, season))
 
         initials = [cur_driver.initials for cur_driver in self.drivers_list]
         header = ",".join(['lap'] + initials)
@@ -526,7 +532,7 @@ class RaceAnalysis(object):
                 else:
                     lap_influences[cur_lap - 1][cur_initials] = 'none'
 
-        lapinfluences_file_path = os.path.join(results_path, "%s_%s_%i_lapinfluences.csv" % (timestamp, location, season))
+        lapinfluences_file_path = os.path.join(results_path, "%s_%s_%s_%i_lapinfluences.csv" % (timestamp, random_protection, location, season))
 
         with open(lapinfluences_file_path, 'w') as fh:
             fh.write(header + "\n")
