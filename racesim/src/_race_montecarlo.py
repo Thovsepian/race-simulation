@@ -34,7 +34,7 @@ class MonteCarlo(object):
     Hint:
     The race progress is within the range [0.0, tot_no_laps], where 0.0 corresponds to the start of the first lap.
     """
-    def create_manual_events (self, lap=0, fcy_type ='VSC', force = True, stop =-1) -> tuple: # If force = True, a vsc is generated, otherwise it is sampled from vsc|failure distribution
+    def create_manual_events(self, lap=0, fcy_type ='VSC', force = True, stop =-1) -> tuple: # If force = True, a vsc is generated, otherwise it is sampled from vsc|failure distribution
         # initialization
         # fcy_data = {"phases": [],
         #             "domain": 'progress'}
@@ -62,7 +62,7 @@ class MonteCarlo(object):
             # --------------------------------------------------------------------------------------------------------------
             # assure that SC phase is started more than a lap before the end of the race -> after that it makes no
             # more sense to send it on the track since drivers will not catch up until the end
-            if prog_start > self.race_pars["tot_no_laps"] - 1.0:
+            if prog_start < self.race_pars["tot_no_laps"] - 1.0:
                 if stop!= -1:
                     prog_stop = stop
                 else:
