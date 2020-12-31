@@ -1,4 +1,6 @@
 import pickle
+
+import copy
 import numpy as np
 import tensorflow as tf
 
@@ -29,7 +31,12 @@ class VSE_SUPERVISED(object):
                  "__nnmodel_tc",
                  "__X_conv_cc",
                  "__X_conv_tc",
-                 "__no_timesteps_tc")
+                 "__no_timesteps_tc",
+                 "__preprocessor_cc_path",
+                 "__preprocessor_tc_path",
+                 "__nnmodel_cc_path",
+                 "__nnmodel_tc_path"
+                 )
 
     # ------------------------------------------------------------------------------------------------------------------
     # CONSTRUCTOR ------------------------------------------------------------------------------------------------------
@@ -46,6 +53,11 @@ class VSE_SUPERVISED(object):
 
         with open(preprocessor_tc_path, 'rb') as fh:
             self.preprocessor_tc = pickle.load(fh)
+
+        self.preprocessor_tc_path = preprocessor_tc_path
+        self.preprocessor_cc_path = preprocessor_cc_path
+        self.nnmodel_tc_path = nnmodel_tc_path
+        self.nnmodel_cc_path = nnmodel_cc_path
 
         self.nnmodel_cc = {"interpreter": tf.lite.Interpreter(model_path=nnmodel_cc_path)}
         self.nnmodel_tc = {"interpreter": tf.lite.Interpreter(model_path=nnmodel_tc_path)}
@@ -72,6 +84,14 @@ class VSE_SUPERVISED(object):
     def __set_preprocessor_cc(self, x) -> None: self.__preprocessor_cc = x
     preprocessor_cc = property(__get_preprocessor_cc, __set_preprocessor_cc)
 
+    def __get_preprocessor_cc_path(self): return self.__preprocessor_cc_path
+    def __set_preprocessor_cc_path(self, x) -> None: self.__preprocessor_cc_path = x
+    preprocessor_cc_path = property(__get_preprocessor_cc_path, __set_preprocessor_cc_path)
+
+    def __get_preprocessor_tc_path(self): return self.__preprocessor_tc_path
+    def __set_preprocessor_tc_path(self, x) -> None: self.__preprocessor_tc_path = x
+    preprocessor_tc_path = property(__get_preprocessor_tc_path, __set_preprocessor_tc_path)
+
     def __get_preprocessor_tc(self): return self.__preprocessor_tc
     def __set_preprocessor_tc(self, x) -> None: self.__preprocessor_tc = x
     preprocessor_tc = property(__get_preprocessor_tc, __set_preprocessor_tc)
@@ -83,6 +103,14 @@ class VSE_SUPERVISED(object):
     def __get_nnmodel_tc(self) -> dict: return self.__nnmodel_tc
     def __set_nnmodel_tc(self, x: dict) -> None: self.__nnmodel_tc = x
     nnmodel_tc = property(__get_nnmodel_tc, __set_nnmodel_tc)
+
+    def __get_nnmodel_cc_path(self): return self.__nnmodel_cc_path
+    def __set_nnmodel_cc_path(self, x) -> None: self.__nnmodel_cc_path = x
+    nnmodel_cc_path = property(__get_nnmodel_cc_path, __set_nnmodel_cc_path)
+
+    def __get_nnmodel_tc_path(self): return self.__nnmodel_tc_path
+    def __set_nnmodel_tc_path(self, x) -> None: self.__nnmodel_tc_path = x
+    nnmodel_tc_path = property(__get_nnmodel_tc_path, __set_nnmodel_tc_path)
 
     def __get_X_conv_cc(self) -> np.ndarray: return self.__X_conv_cc
     def __set_X_conv_cc(self, x: np.ndarray) -> None: self.__X_conv_cc = x
@@ -190,6 +218,15 @@ class VSE_SUPERVISED(object):
         # process new features
         self.X_conv_cc = self.preprocessor_cc.transform(X, dtype_out=np.float32)
 
+    def __deepcopy__(self, memodict={}):
+        new = VSE_SUPERVISED(preprocessor_cc_path=self.preprocessor_cc_path,
+                             preprocessor_tc_path=self.preprocessor_tc_path,
+                             nnmodel_cc_path=self.nnmodel_cc_path,
+                             nnmodel_tc_path=self.nnmodel_tc_path)
+        new.X_conv_tc = copy.deepcopy(self.X_conv_tc)
+        new.X_conv_cc = copy.deepcopy(self.X_conv_cc)
+        return new
+
     def make_decision(self,
                       bool_driving: list or np.ndarray,
                       avail_dry_compounds: list,
@@ -235,7 +272,7 @@ class VSE_SUPERVISED(object):
                         and bool_driving[idx_driver] \
                         and idx_driver not in idxs_driver_pitstop:
                     idxs_driver_pitstop.append(idx_driver)
-                    print("WARNING: Had to enforce a pit stop for supervised VSE above 90%% race progress!")
+                    print("WARNING: Had to enforce a pit stop for supervised VSE above 90%% race progress! Offending driver:", idx_driver)
 
             idxs_driver_pitstop.sort()
 
