@@ -1266,25 +1266,30 @@ class Race(MonteCarlo, RaceAnalysis):
             # take tirechange decisions (are set None for retired drivers) (important: the decisions are taken based on
             # the data at the end of the previous lap (with some exceptions, e.g. FCY status))
 
+            if self.vse_enabled_drivers is not None:
+                drivers_to_consider = [i for i, driver in enumerate(self.drivers_list) if driver.carno in self.vse_enabled_drivers]
+            else:
+                drivers_to_consider = range(len(self.drivers_list))
+
             next_compound = self.vse. \
-                decide_pitstop(driver_initials=[driver.initials for driver in self.drivers_list],
-                               cur_compounds=[driver.car.tireset.compound for driver in self.drivers_list],
-                               no_past_tirechanges=[len(driver.strategy_info) - 1 for driver in self.drivers_list],
-                               tire_ages=[driver.car.tireset.age_degr for driver in self.drivers_list],
-                               positions_prevlap=self.positions[self.cur_lap - 1],
+                decide_pitstop(driver_initials=[self.drivers_list[i].initials for i in drivers_to_consider],
+                               cur_compounds=[self.drivers_list[i].car.tireset.compound for i in drivers_to_consider],
+                               no_past_tirechanges=[len(self.drivers_list[i].strategy_info) - 1 for i in drivers_to_consider],
+                               tire_ages=[self.drivers_list[i].car.tireset.age_degr for i in drivers_to_consider],
+                               positions_prevlap=[self.positions[self.cur_lap - 1][i] for i in drivers_to_consider],
                                pit_prevlap=[True if idx in self.pit_driver_idxs else False
-                                            for idx in range(self.no_drivers)],
+                                            for idx in drivers_to_consider],
                                cur_lap=self.cur_lap,
                                tot_no_laps=self.race_pars["tot_no_laps"],
                                fcy_types=[self.fcy_data["phases"][idx_phase][2] if idx_phase is not None
                                           else None for idx_phase in self.fcy_handling["idxs_act_phase"]],
                                fcy_start_end_progs=self.fcy_handling["start_end_prog"],
-                               bool_driving=self.bool_driving[self.cur_lap],
-                               bool_driving_prevlap=self.bool_driving[self.cur_lap - 1],
-                               racetimes_prevlap=self.racetimes[self.cur_lap - 1],
+                               bool_driving=np.array([self.bool_driving[self.cur_lap][i] for i in drivers_to_consider]),
+                               bool_driving_prevlap=np.array([self.bool_driving[self.cur_lap - 1][i] for i in drivers_to_consider]),
+                               racetimes_prevlap=[self.racetimes[self.cur_lap - 1][i] for i in drivers_to_consider],
                                location=self.track.name,
-                               used_2compounds=[True if len({x[1] for x in driver.strategy_info}) > 1 else False
-                                                for driver in self.drivers_list])
+                               used_2compounds=[True if len({x[1] for x in self.drivers_list[i].strategy_info}) > 1 else False
+                                                for i in drivers_to_consider])
 
             # update strategy info for affected drivers
             for idx, compound in enumerate(next_compound):
