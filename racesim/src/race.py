@@ -193,8 +193,9 @@ class Race(MonteCarlo, RaceAnalysis):
         # --------------------------------------------------------------------------------------------------------------
 
         # set retirements per driver (if set in the parameter file, i.e. a filled list was inserted)
+        retirements_per_driver = [None] * self.no_drivers
+
         if self.retire_data_progress["retirements"] is not None and self.retire_data_progress["retirements"]:
-            retirements_per_driver = [None] * self.no_drivers
 
             for cur_retirement in self.retire_data_progress["retirements"]:
                 # find current driver index
@@ -204,7 +205,7 @@ class Race(MonteCarlo, RaceAnalysis):
                 # set according retirement value
                 retirements_per_driver[idx_driver] = cur_retirement[1]
 
-            self.retire_data_progress["retirements"] = retirements_per_driver
+        self.retire_data_progress["retirements"] = retirements_per_driver
 
         # set positions for lap 0 according to starting grid (use sorted indices to handle the case if not all grid
         # positions are set)
