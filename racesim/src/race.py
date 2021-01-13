@@ -105,7 +105,8 @@ class Race(MonteCarlo, RaceAnalysis):
                  monte_carlo_pars: dict,
                  event_pars: dict,
                  disable_retirements=False,
-                 disable_events=False) -> None:
+                 disable_events=False,
+                 clean_vse=True) -> None:
 
         # --------------------------------------------------------------------------------------------------------------
         # CREATE OTHER REQUIRED OBJECTS --------------------------------------------------------------------------------
@@ -126,6 +127,8 @@ class Race(MonteCarlo, RaceAnalysis):
         self.drivers_list.sort(key=lambda driver: driver.carno)
         self.drivers_mapping = {self.drivers_list[idx].carno: idx for idx in range(len(self.drivers_list))}
         self.no_drivers = len(self.drivers_list)
+
+        self.driving_mask = [True] * self.no_drivers
 
         # create track object
         self.track = Track(track_pars=track_pars)
@@ -214,19 +217,8 @@ class Race(MonteCarlo, RaceAnalysis):
         self.positions[0, idxs_sorted] = np.arange(1, self.no_drivers + 1)
 
         # reset strategy info for every driver if VSE is used -> keep only the start information
-        if self.vse is not None:
-            for driver in self.drivers_list:
-                # adjust start compound basestrategy VSE is chosen for current driver
-                if self.vse.vse_pars['vse_type'][driver.initials] == 'basestrategy':
-                    driver.strategy_info = [self.vse.vse_pars['base_strategy'][driver.initials][0]]
-
-                # adjust start compound realstrategy VSE is chosen for current driver
-                elif self.vse.vse_pars['vse_type'][driver.initials] == 'realstrategy':
-                    driver.strategy_info = [self.vse.vse_pars['real_strategy'][driver.initials][0]]
-
-                # use start compound that is defined in the strategy info section (NN VSE)
-                else:
-                    driver.strategy_info = [driver.strategy_info[0]]
+        if self.vse is not None and clean_vse:
+            self.remove_future_strategy()
 
         # --------------------------------------------------------------------------------------------------------------
         # PREPARE FCY PHASES AND RETIREMENTS ---------------------------------------------------------------------------
@@ -261,6 +253,32 @@ class Race(MonteCarlo, RaceAnalysis):
         self.retire_data = copy.deepcopy(self.retire_data_progress)
 
         self.handle_random_events_generation()
+
+    def remove_future_strategy(self):
+        """Remove strategy information for future laps, in order to avoid collisions with VSE predictions"""
+
+        # Select only drivers that would be influenced by VSE decisions
+        if self.vse_enabled_drivers is not None:
+            drivers_to_consider = [self.drivers_list[self.drivers_mapping[carno]] for carno in self.vse_enabled_drivers]
+        else:
+            drivers_to_consider = self.drivers_list
+
+        for driver in drivers_to_consider:
+            if self.vse.vse_pars['vse_type'][driver.initials] == 'basestrategy':
+                strategy = self.vse.vse_pars['base_strategy'][driver.initials]
+            elif self.vse.vse_pars['vse_type'][driver.initials] == 'realstrategy':
+                strategy = self.vse.vse_pars['real_strategy'][driver.initials]
+            else:
+                strategy = driver.strategy_info
+
+            # If there are still pit stops planned, discard them
+            if strategy[-1][0] < self.cur_lap:
+                for i, pit_info in enumerate(strategy):
+                    if pit_info[0] > self.cur_lap:
+                        driver.strategy_info = strategy[:i]
+                        break
+            else:
+                driver.strategy_info = strategy
 
     def handle_custom_fcy_generation(self, fcy_type, stop = -1) -> None:
         """Create and verify FCY and retirements events"""
@@ -426,9 +444,18 @@ class Race(MonteCarlo, RaceAnalysis):
 
     def set_enable_vse(self, x: bool) -> None:
         self.enable_vse = x
+        if x:
+            self.remove_future_strategy()
+
 
     def set_vse_enabled_drivers(self, x: list) -> None:
         self.vse_enabled_drivers = set(copy.deepcopy(x))
+        drivers_to_consider = [i for i, driver in enumerate(self.drivers_list) if
+                               driver.carno in self.vse_enabled_drivers]
+        driving_mask = [False] * len(self.drivers_list)
+        for i in drivers_to_consider:
+            driving_mask[i] = True
+        self.driving_mask = np.array(driving_mask)
 
     def __get_cur_lap(self) -> int:
         return self.__cur_lap
@@ -1266,35 +1293,31 @@ class Race(MonteCarlo, RaceAnalysis):
             # take tirechange decisions (are set None for retired drivers) (important: the decisions are taken based on
             # the data at the end of the previous lap (with some exceptions, e.g. FCY status))
 
-            if self.vse_enabled_drivers is not None:
-                drivers_to_consider = [i for i, driver in enumerate(self.drivers_list) if driver.carno in self.vse_enabled_drivers]
-            else:
-                drivers_to_consider = range(len(self.drivers_list))
-
             next_compound = self.vse. \
-                decide_pitstop(driver_initials=[self.drivers_list[i].initials for i in drivers_to_consider],
-                               cur_compounds=[self.drivers_list[i].car.tireset.compound for i in drivers_to_consider],
-                               no_past_tirechanges=[len(self.drivers_list[i].strategy_info) - 1 for i in drivers_to_consider],
-                               tire_ages=[self.drivers_list[i].car.tireset.age_degr for i in drivers_to_consider],
-                               positions_prevlap=[self.positions[self.cur_lap - 1][i] for i in drivers_to_consider],
+                decide_pitstop(driver_initials=[driver.initials for driver in self.drivers_list],
+                               cur_compounds=[driver.car.tireset.compound for driver in self.drivers_list],
+                               no_past_tirechanges=[len(driver.strategy_info) - 1 for driver in self.drivers_list],
+                               tire_ages=[driver.car.tireset.age_degr for driver in self.drivers_list],
+                               positions_prevlap=self.positions[self.cur_lap - 1],
                                pit_prevlap=[True if idx in self.pit_driver_idxs else False
-                                            for idx in drivers_to_consider],
+                                            for idx in range(self.no_drivers)],
                                cur_lap=self.cur_lap,
                                tot_no_laps=self.race_pars["tot_no_laps"],
                                fcy_types=[self.fcy_data["phases"][idx_phase][2] if idx_phase is not None
                                           else None for idx_phase in self.fcy_handling["idxs_act_phase"]],
                                fcy_start_end_progs=self.fcy_handling["start_end_prog"],
-                               bool_driving=np.array([self.bool_driving[self.cur_lap][i] for i in drivers_to_consider]),
-                               bool_driving_prevlap=np.array([self.bool_driving[self.cur_lap - 1][i] for i in drivers_to_consider]),
-                               racetimes_prevlap=[self.racetimes[self.cur_lap - 1][i] for i in drivers_to_consider],
+                               bool_driving=self.driving_mask,
+                               bool_driving_prevlap=self.bool_driving[self.cur_lap - 1],
+                               racetimes_prevlap=self.racetimes[self.cur_lap - 1],
                                location=self.track.name,
-                               used_2compounds=[True if len({x[1] for x in self.drivers_list[i].strategy_info}) > 1 else False
-                                                for i in drivers_to_consider])
+                               used_2compounds=[True if len({x[1] for x in driver.strategy_info}) > 1 else False
+                                                for driver in self.drivers_list])
 
             # update strategy info for affected drivers
             for idx, compound in enumerate(next_compound):
                 if compound is not None:
                     if self.vse_enabled_drivers is not None and self.drivers_list[idx].carno in self.vse_enabled_drivers:
+                        # print("pit driver", self.drivers_list[idx].carno)
                         self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
                     else:
                         self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
