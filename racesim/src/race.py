@@ -1527,6 +1527,11 @@ class Race(MonteCarlo, RaceAnalysis):
 
         return iter(driving_drivers)
 
+    def is_under_fcy(self, carno:int) -> bool:
+        assert carno in self.drivers_mapping, "[ERROR] car #{} is not in the race".format(carno)
+        idx = self.drivers_mapping[carno]
+        return self.fcy_handling["idxs_act_phase"][idx] is not None
+
     # ------------------------------------------------------------------------------------------------------------------
     # METHODS (PROCESS RESULTS) ----------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
