@@ -272,7 +272,7 @@ class Race(MonteCarlo, RaceAnalysis):
                 strategy = driver.strategy_info
 
             # If there are still pit stops planned, discard them
-            if strategy[-1][0] < self.cur_lap:
+            if strategy[-1][0] > self.cur_lap:
                 for i, pit_info in enumerate(strategy):
                     if pit_info[0] > self.cur_lap:
                         driver.strategy_info = strategy[:i]
@@ -1316,10 +1316,8 @@ class Race(MonteCarlo, RaceAnalysis):
             # update strategy info for affected drivers
             for idx, compound in enumerate(next_compound):
                 if compound is not None:
-                    if self.vse_enabled_drivers is not None and self.drivers_list[idx].carno in self.vse_enabled_drivers:
+                    if (self.vse_enabled_drivers is not None and self.drivers_list[idx].carno in self.vse_enabled_drivers) or self.vse_enabled_drivers is None:
                         # print("pit driver", self.drivers_list[idx].carno)
-                        self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
-                    else:
                         self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
 
 
