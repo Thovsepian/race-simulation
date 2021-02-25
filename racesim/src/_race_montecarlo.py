@@ -469,7 +469,7 @@ class MonteCarlo(object):
             raise ValueError('Reference driver was not found, check driver initials!')
 
         # determine basic strategy if VSE is used
-        if self.vse is not None:
+        if self.vse is not None and self.cur_lap == 0:
             strategy_info_tmp = \
                 self.vse.determine_basic_strategy(driver=presim_driver,
                                                   tot_no_laps=self.race_pars["tot_no_laps"],
