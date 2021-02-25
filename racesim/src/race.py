@@ -128,7 +128,7 @@ class Race(MonteCarlo, RaceAnalysis):
         self.drivers_mapping = {self.drivers_list[idx].carno: idx for idx in range(len(self.drivers_list))}
         self.no_drivers = len(self.drivers_list)
 
-        self.driving_mask = [True] * self.no_drivers
+        self.driving_mask = np.array([True] * self.no_drivers)
 
         # create track object
         self.track = Track(track_pars=track_pars)
@@ -1318,6 +1318,8 @@ class Race(MonteCarlo, RaceAnalysis):
                 if compound is not None:
                     if (self.vse_enabled_drivers is not None and self.drivers_list[idx].carno in self.vse_enabled_drivers) or self.vse_enabled_drivers is None:
                         # print("pit driver", self.drivers_list[idx].carno)
+                        # if self.drivers_list[idx].carno == 5:
+                        #     print("VETTEL")
                         self.drivers_list[idx].strategy_info.append([self.cur_lap, compound, 0, 0.0])
 
 
